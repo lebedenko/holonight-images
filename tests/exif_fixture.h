@@ -88,6 +88,25 @@ inline QByteArray sonyPayload() {
                rationals(0x0004, {{30, 1}, {31, 1}, {12, 1}}), byte(0x0005, 0), rationals(0x0006, {{1790, 10}})});
 }
 
+inline QByteArray jpegSegment(quint8 marker, const QByteArray& body) {
+  QByteArray length(2, '\0');
+  qToBigEndian(static_cast<quint16>(body.size() + 2), length.data());
+  return QByteArray(1, char(0xff)) + char(marker) + length + body;
+}
+// CRC bytes are placeholders: these containers exercise metadata extraction only.
+inline QByteArray pngChunk(const QByteArray& type, const QByteArray& body) {
+  QByteArray length(4, '\0');
+  qToBigEndian(static_cast<quint32>(body.size()), length.data());
+  return length + type + body + QByteArray(4, '\0');
+}
+inline QByteArray png(const QByteArray& chunks) { return QByteArray("\x89PNG\r\n\x1a\n", 8) + chunks; }
+inline QByteArray webpChunk(const QByteArray& type, const QByteArray& body) {
+  return type + le32(body.size()) + body + QByteArray(body.size() & 1, '\0');
+}
+inline QByteArray webp(const QByteArray& chunks) {
+  return QByteArray("RIFF") + le32(chunks.size() + 4) + "WEBP" + chunks;
+}
+
 inline QByteArray jpegWithApp1(const QByteArray& exif) {
   QImage image(4, 3, QImage::Format_RGB32);
   image.fill(Qt::blue);
@@ -95,12 +114,8 @@ inline QByteArray jpegWithApp1(const QByteArray& exif) {
   QBuffer buffer(&jpeg);
   buffer.open(QIODevice::WriteOnly);
   image.save(&buffer, "JPEG");
-  const auto segment = [](const QByteArray& body) {
-    QByteArray length(2, '\0');
-    qToBigEndian(static_cast<quint16>(body.size() + 2), length.data());
-    return QByteArray("\xff\xe1", 2) + length + body;
-  };
   // An XMP APP1 segment first proves non-EXIF APP1 segments are skipped.
-  return jpeg.first(2) + segment("http://ns.adobe.com/xap/1.0/\0<x/>") + segment(exif) + jpeg.sliced(2);
+  return jpeg.first(2) + jpegSegment(0xe1, "http://ns.adobe.com/xap/1.0/\0<x/>") + jpegSegment(0xe1, exif) +
+         jpeg.sliced(2);
 }
 }  // namespace ExifFixture
