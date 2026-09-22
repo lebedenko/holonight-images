@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 6.11 COMPONENTS Core Gui)
+find_dependency(PkgConfig)
+pkg_check_modules(EXIF REQUIRED IMPORTED_TARGET libexif)
+pkg_check_modules(WebP REQUIRED IMPORTED_TARGET libwebp)
+include("${CMAKE_CURRENT_LIST_DIR}/HolonightImagesTargets.cmake")
