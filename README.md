@@ -1,9 +1,9 @@
 # HoloNight Images
 
-Synchronous Qt raster inspection, bounded decoding and structured EXIF facts for HoloNight applications.
+Synchronous Qt raster/SVG inspection, bounded decoding/rasterization and structured EXIF facts for HoloNight applications.
 Extracted from HoloNight Viewer and Files under GPL-3.0-or-later.
 
-Requires CMake 3.25+, C++23, Qt 6.11 Core/Gui, libexif and libwebp. Tests additionally use GoogleTest and Python.
+Requires CMake 3.25+, C++23, Qt 6.11 Core/Gui/Svg, libexif and libwebp. Tests additionally use GoogleTest and Python.
 No KDE dependency. Runtime formats come from installed Qt image handlers; AVIF is not guaranteed.
 
 ```sh
@@ -74,3 +74,53 @@ finding is evidence to investigate, not a reason to suppress sanitizer checks.
 LeakSanitizer needs an environment without ptrace restrictions. See the
 [maintenance verification](docs/sdd/shared-image-maintenance/VERIFICATION.md)
 for the retained Qt PDF plugin leak finding and coverage limitations.
+
+## SVG mechanics
+
+`holonight_images/svg.h` is a separate API; raster `decode` still never upscales.
+Use `loadSvg(device, inputBytes, cancelled)` to retain bytes from a seekable device. It checks both reported size
+and actual bytes, leaves the device open, and never opens a pathname. Viewer and Files use a 10 MiB source limit.
+Pass the loaded bytes to `inspectSvg` or `rasterizeSvg`; those byte-based calls assume the caller has bounded input.
+SVGZ is unsupported.
+
+`SvgFacts` reports default size, effective Qt viewBox and chosen document size separately. The document size prefers
+positive finite default dimensions and falls back to a positive finite viewBox. Fractional pixel lengths and viewBox
+geometry stay floating point until `svgPixelSize` rounds to an explicit positive pixel bound. Use the same helper
+for requested pixels and cache adequacy, always with the original viewport bound (do not fit a rounded result again).
+SVG may enlarge beyond its logical dimensions. Raster source-pixel/extent budgets do not apply to SVG coordinates.
+
+```cpp
+#include <holonight_images/svg.h>
+auto source = HolonightImages::loadSvg(openDevice, 10 * 1024 * 1024, cancelled);
+if (source.outcome == HolonightImages::Outcome::Success) {
+  auto preview = HolonightImages::rasterizeSvg(
+      source.bytes, {.bound = {512, 512}, .outputBytes = 16 * 1024 * 1024}, cancelled);
+  // preview.inspection carries Outcome, facts and any structured resource-policy reason.
+}
+```
+
+Resource validation happens before renderer loading, including on rasterization. Fragments and embedded base64
+PNG/JPEG/GIF/WebP/BMP images with matching raster signatures are permitted. External references, stylesheets,
+entity declarations, external DTDs, xml:base and resource-changing animations are rejected with Unsupported and
+`SvgResourceReason`. CSS escapes and malformed resource syntax are conservatively unsupported. Ordinary CSS
+styles and animation rules are retained; this validator is not a general browser/CSS engine. Embedded image
+availability still depends on the corresponding raster handler.
+
+`classifySvgReference` distinguishes fragments, embedded rasters, local files, external and invalid references
+without resolving paths. Only an `Unsupported` inspection with `LocalImageReference` is eligible for Viewer's
+consumer-owned local linked-image path. Other rejection reasons must not select that path, and rejected documents
+must not satisfy Files caches. Files owns translated explanations and its SVG thumbnail-policy version.
+
+Rendering returns transparent ARGB32_Premultiplied pixels, enforces `outputBytes` before QImage allocation, and
+uses explicit [Qt SVG options](https://doc.qt.io/qt-6/qtsvg.html). Animation is Disabled by default; Enabled retains
+Qt animation handling for Viewer. Neither option enables AssumeTrustedSource. Limits cannot account for every
+Qt internal/intermediate allocation; cancellation is cooperative between Qt calls. Consumers own persistent GUI
+renderers, scheduling, cache identity, viewport/DPR policy and presentation. A GUI application is required for
+SVG content using fonts, as with QSvgRenderer directly.
+
+See the [SVG specification](docs/sdd/shared-svg-support/SPEC.md) and [tasks](docs/sdd/shared-svg-support/TASKS.md).
+
+Qt treats image-element fragment hrefs as filenames rather than document-local references, so these are rejected.
+Data URIs must use the lowercase `data:` scheme and contain a decodable raster, preventing Qt's ordinary failed-data
+filename fallback. Fragment references in use/paint resources remain allowed. Embedded decode is subject to Qt's
+allocation ceiling and renderer resource checks, not the caller's final output-image budget.

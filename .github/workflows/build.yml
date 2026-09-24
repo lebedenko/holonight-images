@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:base
     steps:
-      - run: pacman -Syu --noconfirm --needed base-devel cmake ninja qt6-base qt6-imageformats libexif libwebp gtest python git
+      - run: pacman -Syu --noconfirm --needed base-devel cmake ninja qt6-base qt6-svg qt6-imageformats libexif libwebp gtest python git
       - uses: actions/checkout@v4
       - run: cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
       - run: cmake --build build/release --parallel 2
