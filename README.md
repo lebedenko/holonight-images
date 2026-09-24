@@ -47,3 +47,30 @@ containers retain Qt's interpretation. Plugins advertising the same capability h
 ([Qt plugin selection](https://doc.qt.io/qt-6/qimageioplugin.html)).
 
 See [design](docs/sdd/shared-image-architecture/DESIGN.md) and [verification](docs/sdd/shared-image-architecture/TASKS.md).
+
+## Local sanitizer fuzzing
+
+Opt in using a separate Clang build. The normal library and installed package stay
+uninstrumented; fuzz targets are never installed.
+
+```sh
+cmake -S . -B build/fuzz -G Ninja -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=OFF -DHOLONIGHT_IMAGES_FUZZING=ON
+cmake --build build/fuzz --parallel 2
+python3 scripts/fuzz-local.py build/fuzz build/fuzz-evidence --seconds 600
+```
+
+The runner requires an empty evidence directory, replays generated seeds, then
+runs separate raw-EXIF, container-metadata and bounded-decode campaigns. Use
+`--harness exif|metadata|decode` to select one. It retains commands, tool versions,
+source/binary/seed/corpus hashes, logs and crash artifacts in `campaign.json` and
+adjacent files, and exits nonzero on a finding or timeout. Inputs are capped at
+1 MiB, RSS at 2 GiB, each input at 10 seconds, each campaign at 600 seconds and
+Qt image allocations at 16 MiB. Read/seek faults, cancellation and small resource
+budgets are exercised alongside ordinary inputs.
+
+System Qt codecs and libexif/libwebp are not fully sanitizer-instrumented. A
+finding is evidence to investigate, not a reason to suppress sanitizer checks.
+LeakSanitizer needs an environment without ptrace restrictions. See the
+[maintenance verification](docs/sdd/shared-image-maintenance/VERIFICATION.md)
+for the retained Qt PDF plugin leak finding and coverage limitations.
