@@ -1,5 +1,7 @@
 # HoloNight Images
 
+Use Conventional Commits for every new commit: `type(scope): imperative summary`, or `type: imperative summary` when a scope adds no clarity.
+
 Own synchronous image inspection, bounded raster decoding, SVG source loading/inspection/rasterization and structured metadata.
 Use caller-owned seekable devices; never open or resolve a pathname. Keep persistent renderers, animation playback,
 caches, workers and UI in consumers. Validate SVG resource policy before loading any renderer; retain Qt resource checks.
