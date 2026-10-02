@@ -45,3 +45,5 @@ Caches, memories and project.local.yml are ignored; vendored tooling is excluded
 available for cross-component work. See [Serena workflow](https://oraios.github.io/serena/02-usage/040_workflow.html).
 Bash indexing requires Node.js, bash-language-server and shellcheck on PATH. Verify symbol retrieval from extensionless
 `scripts/status` in Hyprlock explicitly; a running Bash server alone is not proof of recognition.
+
+Qt package tests select qmllint from Qt6::qmllint and qml from its sibling directory or the configured Qt binary directory, without searching PATH. Set QML and QMLLINT to executable paths to override these test tools (paths with spaces are supported). Direct CMake HOLONIGHT_QML_EXECUTABLE and HOLONIGHT_QMLLINT_EXECUTABLE overrides are also supported. Automatic test-tool paths are not cached; explicit cache overrides persist. QMLLINT continues to populate the generic QMLLINT CMake variable for other modules.

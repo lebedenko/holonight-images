@@ -121,6 +121,10 @@ def configure(config, preset):
             f'-DQML_IMPORT_PATH={prefix() / "lib/qt6/qml"}']
     if os.environ.get('QMLLINT'):
         args.append('-DQMLLINT=' + os.environ['QMLLINT'])
+    if config.get('module') == 'holonight-qt':
+        for tool in ('QML', 'QMLLINT'):
+            if os.environ.get(tool):
+                args.append(f'-DHOLONIGHT_{tool}_EXECUTABLE=' + os.environ[tool])
     args += [f'-D{package}_DIR={path}' for package, path in packages(config, prefix()).items()]
     run(args)
     refresh(config, preset)
