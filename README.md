@@ -129,3 +129,21 @@ allocation ceiling and renderer resource checks, not the caller's final output-i
 
 See [tooling/README.md](tooling/README.md) for presets, local dependency overrides, editor refresh,
 `task tooling:doctor`, and the independent Serena project.
+
+## Local CI rehearsal
+
+Run `task ci` with Git, Python 3, Task and an accessible Docker daemon; Podman is
+used when Docker is absent. The fixed linux/amd64 environment needs an amd64 host
+or emulation, plus registry and Arch archive access. Local and hosted CI use the
+same immutable compiler/Qt image and checksum-pinned image codecs.
+
+The task builds Release from a fresh working-tree snapshot and runs all provider,
+installed-package and plugin-isolation tests. Tracked edits and non-ignored new
+files are included; untracked inputs are reported to add before pushing. Containers
+mount source read-only and use disposable writable source/build trees. Existing
+development builds stay untouched; only container layers may be reused.
+
+Complete logs, revision/dirty state, image identity, tool versions and results go
+to ignored `build/ci/`. Required failures return nonzero and print the failure log.
+Run launcher regressions with `python3 scripts/ci/test_launcher.py`. Publication,
+releases and artifact uploads remain remote operations.

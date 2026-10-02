@@ -1,0 +1,56 @@
+[
+  {
+    "name": "qt6-imageformats",
+    "version": "6.11.1-1",
+    "sha256": "50ff79a6473525119d76efe906eb9d91ce9389d7f4bb2ad2e036a912c59a8bc4",
+    "url": "https://archive.archlinux.org/packages/q/qt6-imageformats/qt6-imageformats-6.11.1-1-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "libexif",
+    "version": "0.6.26-1",
+    "sha256": "92890eb0eece217dff5df78403d32682693b0b1557f20ca9264ca798646caea5",
+    "url": "https://archive.archlinux.org/packages/l/libexif/libexif-0.6.26-1-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "libwebp",
+    "version": "1.6.0-2",
+    "sha256": "a80e7edd3ddd27c6fd8cd83d0bd98d46b3f0279b7ee01f5baeded0d6f26f8975",
+    "url": "https://archive.archlinux.org/packages/l/libwebp/libwebp-1.6.0-2-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "libtiff",
+    "version": "4.7.1-2",
+    "sha256": "0ec04018553ff2a1133fd5c5b5e0360bc214cd0f9c598f5518ba84d133a08b00",
+    "url": "https://archive.archlinux.org/packages/l/libtiff/libtiff-4.7.1-2-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "jbigkit",
+    "version": "2.1-8",
+    "sha256": "ca53fa884681273162aadcf99c30514a7010d5e621eb0a5ae491500ae8dc52c9",
+    "url": "https://archive.archlinux.org/packages/j/jbigkit/jbigkit-2.1-8-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "libdeflate",
+    "version": "1.26-1",
+    "sha256": "3bd3b1ca9a333ab97ebb55f760963f64817b6c4c0d54747b37187f36ab60deab",
+    "url": "https://archive.archlinux.org/packages/l/libdeflate/libdeflate-1.26-1-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "jasper",
+    "version": "4.2.9-1",
+    "sha256": "de413717cf274894de2a4bbbc8c85be727f313fb3bbc2ed30fe316cfc773a6b1",
+    "url": "https://archive.archlinux.org/packages/j/jasper/jasper-4.2.9-1-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "libmng",
+    "version": "2.0.3-4",
+    "sha256": "d72b54a4d4aef58770b19737427b00e98aa412702078fea2b8d40cad4c474b84",
+    "url": "https://archive.archlinux.org/packages/l/libmng/libmng-2.0.3-4-x86_64.pkg.tar.zst"
+  },
+  {
+    "name": "lcms2",
+    "version": "2.19.1-1",
+    "sha256": "8cdbd1ec200fcf41a583d0fd6fbc6f117f9642a3968c73263c5b0ca35a4c4663",
+    "url": "https://archive.archlinux.org/packages/l/lcms2/lcms2-2.19.1-1-x86_64.pkg.tar.zst"
+  }
+]

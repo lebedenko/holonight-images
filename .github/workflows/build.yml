@@ -4,11 +4,7 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container: archlinux:base
+    runs-on: ubuntu-24.04
     steps:
-      - run: pacman -Syu --noconfirm --needed base-devel cmake ninja qt6-base qt6-svg qt6-imageformats libexif libwebp gtest python git
       - uses: actions/checkout@v4
-      - run: cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-      - run: cmake --build build/release --parallel 2
-      - run: ctest --test-dir build/release --output-on-failure
+      - run: python3 scripts/ci/run.py --lane build-test

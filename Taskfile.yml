@@ -1,5 +1,9 @@
 version: '3'
 tasks:
+  ci:
+    desc: Rehearse all push validation in isolated containers
+    cmds:
+    - python3 scripts/ci/run.py
   tooling:doctor:
     desc: doctor using standalone tooling
     cmds:
