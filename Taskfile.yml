@@ -1,0 +1,79 @@
+version: '3'
+tasks:
+  tooling:doctor:
+    desc: doctor using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py doctor
+  tooling:refresh:
+    desc: refresh using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py refresh --preset {{default "test" .EDITOR_PRESET}}
+  serena:serve:
+    desc: Start independent Serena server in codex context
+    cmds:
+    - serena start-mcp-server --project "{{.TASKFILE_DIR}}" --context codex
+  serena:index:
+    desc: Explicitly index this module
+    cmds:
+    - serena project index "{{.TASKFILE_DIR}}"
+  deps:
+    desc: deps using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py deps --preset {{.PRESET}}
+  configure:
+    desc: configure using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py configure --preset {{.PRESET}}
+  build:
+    desc: build using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py build --preset {{.PRESET}}
+  test:
+    desc: test using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py test --preset {{.PRESET}}
+  configure-tests:
+    desc: configure using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py configure --preset test
+  configure:release:
+    desc: configure using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py configure --preset release
+  build:release:
+    desc: build using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py build --preset release
+  format:
+    desc: format using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py format
+  format-check:
+    desc: format-check using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py format-check
+  tidy:
+    desc: tidy using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py tidy --scope all
+  tidy-src:
+    desc: tidy using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py tidy --scope src
+  tidy-tests:
+    desc: tidy using standalone tooling
+    cmds:
+    - python3 tooling/workflow.py tidy --scope tests
+  lint:
+    desc: Run applicable static checks
+    cmds:
+    - task: tidy
+  check:
+    desc: Run build, tests and static checks
+    cmds:
+    - task: build
+    - task: test
+    - task: format-check
+    - task: lint
+vars:
+  PRESET: '{{default "debug" .PRESET}}'

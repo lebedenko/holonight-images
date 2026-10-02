@@ -1,0 +1,12 @@
+{
+  "module": "holonight-images",
+  "cpp": true,
+  "qml": false,
+  "languages": [
+    "cpp",
+    "python"
+  ],
+  "dependencies": [],
+  "qml_modules": [],
+  "wayland": false
+}

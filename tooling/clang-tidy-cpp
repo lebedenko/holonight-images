@@ -1,0 +1,34 @@
+ExtraArgsBefore:
+  - -Wno-error=unknown-argument
+
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -readability-redundant-access-specifiers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access
+
+WarningsAsErrors: '*'
+
+HeaderFilterRegex: '(include|src)/.*'
+
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: modernize-use-default-member-init.UseAssignment
+    value: '1'
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: 'true'

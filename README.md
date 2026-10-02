@@ -124,3 +124,8 @@ Qt treats image-element fragment hrefs as filenames rather than document-local r
 Data URIs must use the lowercase `data:` scheme and contain a decodable raster, preventing Qt's ordinary failed-data
 filename fallback. Fragment references in use/paint resources remain allowed. Embedded decode is subject to Qt's
 allocation ceiling and renderer resource checks, not the caller's final output-image budget.
+
+## Standalone developer tooling
+
+See [tooling/README.md](tooling/README.md) for presets, local dependency overrides, editor refresh,
+`task tooling:doctor`, and the independent Serena project.
