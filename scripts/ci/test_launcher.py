@@ -54,6 +54,26 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue((target / 'link').is_symlink())
         self.assertEqual(os.readlink(target / 'link'), 'edited')
 
+    def test_rootless_podman_preserves_user_mapping_and_read_only_input(self):
+        scripts = self.root / 'scripts/ci'
+        scripts.mkdir(parents=True)
+        (scripts / 'images.json').write_text('{"build":"build@sha256:fixture","licensing":"reuse@sha256:fixture"}')
+        runtime = Path(self.temporary.name) / 'podman'
+        arguments = Path(self.temporary.name) / 'podman-arguments.json'
+        runtime.write_text('#!/usr/bin/env python3\nimport json, sys\nfrom pathlib import Path\n'
+                           'if sys.argv[1] == "--version": print("fake-podman")\n'
+                           f'else: Path({str(arguments)!r}).write_text(json.dumps(sys.argv[1:]))\n')
+        runtime.chmod(0o755)
+        with patch.object(launcher.shutil, 'which', side_effect=lambda name: str(runtime) if name == 'podman' else None), \
+             patch.object(launcher.os, 'getuid', return_value=1000), \
+             patch.object(launcher.os, 'getgid', return_value=1000), \
+             patch('sys.argv', ['ci', '--lane', launcher.LANES[0]]):
+            self.assertEqual(launcher.main(), 0)
+        command = json.loads(arguments.read_text())
+        self.assertIn('--userns=keep-id', command)
+        self.assertEqual(command[command.index('--user') + 1], '1000:1000')
+        self.assertTrue(command[command.index('--mount') + 1].endswith(',dst=/input,readonly'))
+
     def test_missing_runtime_fails_and_records_reason(self):
         with patch.object(launcher.shutil, 'which', return_value=None), patch('sys.argv', ['ci']):
             self.assertEqual(launcher.main(), 1)

@@ -68,6 +68,8 @@ def main():
                            '--mount', f'type=bind,src={source},dst=/input,readonly',
                            '--tmpfs', '/work:rw,exec,mode=1777', '--workdir', '/work',
                            '--entrypoint', '/bin/sh', image, '/input/scripts/ci/lane.sh', lane]
+                if Path(runtime).name == 'podman' and os.getuid() != 0:
+                    command.insert(2, '--userns=keep-id')
                 print(f'Running {lane}: {image}', flush=True)
                 with (output / f'{lane}.log').open('w') as log:
                     result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)

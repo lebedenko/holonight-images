@@ -26,3 +26,9 @@ image-reader plugins). Launcher regressions passed, including missing runtime an
 nonzero propagation. Hashes, modes and timestamps confirmed 173 source/development
 build files stayed unchanged. Complete logs were reviewed; no compiler warnings
 were emitted. Optional Vulkan headers are not needed for these CPU image checks.
+
+
+Rootless Podman uses `--userns=keep-id` so preserved private file modes remain
+readable under the requested UID/GID. A fake-runtime launcher regression verifies
+user mapping and the read-only input mount. Podman is not installed on this host;
+its real-runtime integration is unverified. The verified Docker path is unchanged.
