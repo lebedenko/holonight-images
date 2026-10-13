@@ -7,11 +7,11 @@
 using namespace HolonightImages;
 namespace {
 const std::atomic_bool running{false};
-QByteArray document(QByteArray attributes = "width='24' height='24'", QByteArray body = {}) {
+QByteArray document(const QByteArray& attributes = "width='24' height='24'", const QByteArray& body = {}) {
   return "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' " + attributes + ">" +
          body + "</svg>";
 }
-SvgRenderResult render(QByteArray bytes, QSize bound = {240, 240}, qint64 limit = 1024 * 1024) {
+SvgRenderResult render(const QByteArray& bytes, QSize bound = {240, 240}, qint64 limit = 1024 * 1024) {
   return rasterizeSvg(bytes, {.bound = bound, .outputBytes = limit}, running);
 }
 class Source : public QBuffer {
@@ -22,15 +22,19 @@ class Source : public QBuffer {
   bool sequential = false;
   bool underreport = false;
   std::atomic_bool* cancelOnRead = nullptr;
-  qint64 size() const override { return underreport ? 1 : QBuffer::size(); }
-  bool isSequential() const override { return sequential; }
+  [[nodiscard]] qint64 size() const override { return underreport ? 1 : QBuffer::size(); }
+  [[nodiscard]] bool isSequential() const override { return sequential; }
   bool seek(qint64 offset) override { return !failSeek && QBuffer::seek(offset); }
 
  protected:
   qint64 readData(char* data, qint64 count) override {
-    if (failRead) return -1;
+    if (failRead) {
+      return -1;
+    }
     const auto result = QBuffer::readData(data, count);
-    if (cancelOnRead) cancelOnRead->store(true);
+    if (cancelOnRead != nullptr) {
+      cancelOnRead->store(true);
+    }
     return result;
   }
 };
@@ -77,8 +81,9 @@ TEST(Svg, OutputBudgetAppliesBeforeAllocationWithoutLogicalPixelLimits) {
   const auto limited = render(huge, {20, 20}, 799);
   EXPECT_EQ(limited.inspection.outcome, Outcome::ResourceLimit);
   EXPECT_TRUE(limited.image.isNull());
-  for (const auto size : {QSize{}, QSize(0, 5), QSize(-1, 8)})
+  for (const auto size : {QSize{}, QSize(0, 5), QSize(-1, 8)}) {
     EXPECT_EQ(render(document(), size).inspection.outcome, Outcome::ResourceLimit);
+  }
   EXPECT_EQ(render(document(), {1, 1}, 0).inspection.outcome, Outcome::ResourceLimit);
   EXPECT_EQ(render(document(), {INT_MAX, INT_MAX}, 1024).inspection.outcome, Outcome::ResourceLimit);
 }

@@ -9,7 +9,13 @@
 #include <holonight_images/image.h>
 using namespace HolonightImages;
 namespace {
-constexpr Limits limits{256 * 1024 * 1024, 32000000, 32768, 128 * 1024 * 1024, 1024 * 1024, 64 * 1024 * 1024, 4096};
+constexpr Limits limits{.inputBytes = 256 * 1024 * 1024,
+                        .sourcePixels = 32000000,
+                        .sourceExtent = 32768,
+                        .decodedBytes = 128 * 1024 * 1024,
+                        .metadataBytes = 1024 * 1024,
+                        .tiffMetadataBytes = 64 * 1024 * 1024,
+                        .metadataRecords = 4096};
 const std::atomic_bool running{false};
 QByteArray fixture(const char* name) {
   QFile file(QStringLiteral(FIXTURE_DIR) + '/' + name);
@@ -45,14 +51,20 @@ class ControlledBuffer : public QBuffer {
  protected:
   qint64 readData(char* data, qint64 size) override {
     ++reads;
-    if (failRead != 0 && reads >= failRead) return -1;
+    if (failRead != 0 && reads >= failRead) {
+      return -1;
+    }
     const auto count = QBuffer::readData(data, size);
-    if (count > 0) bytesRead += count;
-    if (cancelRead != 0 && reads >= cancelRead) cancelled.store(true);
+    if (count > 0) {
+      bytesRead += count;
+    }
+    if (cancelRead != 0 && reads >= cancelRead) {
+      cancelled.store(true);
+    }
     return count;
   }
 };
-enum class Operation { Inspect, Decode, Metadata };
+enum class Operation : unsigned char { Inspect, Decode, Metadata };
 Outcome run(Operation operation, ControlledBuffer& device) {
   switch (operation) {
     case Operation::Inspect:
@@ -64,7 +76,9 @@ Outcome run(Operation operation, ControlledBuffer& device) {
     }
     case Operation::Metadata: {
       const auto result = readMetadata(device, limits, device.cancelled);
-      if (result.outcome != Outcome::Success) EXPECT_EQ(result.facts, ExifFacts{});
+      if (result.outcome != Outcome::Success) {
+        EXPECT_EQ(result.facts, ExifFacts{});
+      }
       return result.outcome;
     }
   }
@@ -79,8 +93,9 @@ TEST(Images, RasterFormatsAlphaAndBoundedSizes) {
       EXPECT_EQ(result.image.size(), QSize(1, 1));
       EXPECT_EQ(result.image.pixelColor(0, 0).red(), 255);
     }
-    if (QByteArray(name) == "sample.png" || QByteArray(name) == "sample.webp" || QByteArray(name) == "sample.tif")
+    if (QByteArray(name) == "sample.png" || QByteArray(name) == "sample.webp" || QByteArray(name) == "sample.tif") {
       EXPECT_EQ(result.image.pixelColor(0, 0).alpha(), 128);
+    }
   }
   const auto scaled = decodeBytes(fixture("sample.jpg"), {.limits = limits, .bound = {5, 8}});
   ASSERT_EQ(scaled.outcome, Outcome::Success);
@@ -231,7 +246,13 @@ TEST(Images, RasterLimitsAcceptExactBoundaries) {
   auto bytes = fixture("sample.jpg");
   for (const auto field : {&Limits::inputBytes, &Limits::sourcePixels, &Limits::decodedBytes}) {
     auto policy = limits;
-    policy.*field = field == &Limits::inputBytes ? bytes.size() : field == &Limits::sourcePixels ? 800 : 3200;
+    if (field == &Limits::inputBytes) {
+      policy.*field = bytes.size();
+    } else if (field == &Limits::sourcePixels) {
+      policy.*field = 800;
+    } else {
+      policy.*field = 3200;
+    }
     QBuffer device(&bytes);
     device.open(QIODevice::ReadOnly);
     EXPECT_EQ(inspect(device, policy, running).outcome, Outcome::Success);
@@ -269,7 +290,7 @@ TEST(Images, StructuredExifAndContainerExtraction) {
   const auto tiff = sonyPayload().sliced(6);
   auto png = fixture("sample.png");
   QByteArray length(4, '\0');
-  qToBigEndian(quint32(tiff.size()), length.data());
+  qToBigEndian(static_cast<quint32>(tiff.size()), length.data());
   png.insert(png.size() - 12, length + "eXIf" + tiff + QByteArray(4, '\0'));
   EXPECT_EQ(metadata(png).facts, expected);
   const auto chunks = QByteArray("EXIF") + le32(tiff.size()) + tiff;
@@ -288,7 +309,9 @@ TEST(Images, CompactWebPFallbackCorruptionAndLimits) {
   const auto result = decodeBytes(original);
   ASSERT_EQ(result.outcome, Outcome::Success);
   EXPECT_EQ(result.image.pixelColor(0, 0), QColor(255, 0, 0, 128));
-  for (qsizetype n = 0; n < original.size(); ++n) EXPECT_TRUE(decodeBytes(original.first(n)).image.isNull()) << n;
+  for (qsizetype index = 0; index < original.size(); ++index) {
+    EXPECT_TRUE(decodeBytes(original.first(index)).image.isNull()) << index;
+  }
   auto broken = original;
   broken[20] = 0;
   EXPECT_TRUE(decodeBytes(broken).image.isNull());
@@ -359,14 +382,16 @@ TEST(Images, MetadataRecordBudgetsStopBeforeTheNextRecord) {
     EXPECT_EQ(result.outcome, Outcome::Success);
     EXPECT_EQ(result.facts, ExifFacts{});
     // At most a 12-byte signature and two 8-byte chunk headers; skipped bodies are not read.
-    EXPECT_LE(device.bytesRead, 12 + 2 * 8);
+    EXPECT_LE(device.bytesRead, 12 + (2 * 8));
     EXPECT_TRUE(device.isOpen());
   }
   auto bytes = png(QByteArray{});
-  for (int n = 0; n < 5000; ++n) bytes += pngChunk("tEXt", {});
+  for (int index = 0; index < 5000; ++index) {
+    bytes += pngChunk("tEXt", {});
+  }
   ControlledBuffer device(&bytes);
   EXPECT_EQ(readMetadata(device, limits, running).facts, ExifFacts{});
-  EXPECT_LE(device.bytesRead, 8 + 4096 * 8);
+  EXPECT_LE(device.bytesRead, 8 + (4096 * 8));
 }
 TEST(Images, TruncatedMetadataSegmentsAndChunksAreBestEffort) {
   using namespace ExifFixture;
@@ -406,7 +431,7 @@ TEST(Images, MalformedTiffOffsetsAndInvalidExifValuesAreIgnored) {
   raw.replace(18, 4, le32(0xfffffff0));  // Out-of-line Make value lies beyond the payload.
   EXPECT_TRUE(metadata(raw).facts.make.isEmpty());
   raw = tiff({text(0x010f, "Camera")}, {}, {});
-  raw.replace(8 + 2 + 3 * 12, 4, le32(8));  // Cyclic next-IFD pointer must terminate.
+  raw.replace(8 + 2 + (3 * 12), 4, le32(8));  // Cyclic next-IFD pointer must terminate.
   EXPECT_EQ(metadata(raw).facts.make, "Camera");
   const auto invalid =
       QByteArray("Exif\0\0", 6) + tiff({shortValue(0x010f, 42), text(0x0110, "Still valid")},

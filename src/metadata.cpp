@@ -210,12 +210,18 @@ QByteArray payload(QIODevice& source, const std::atomic_bool& cancelled, const L
     return {};
   }
   auto signature = source.read(2);
-  if (signature == QByteArray("\xff\xd8", 2)) return jpegPayload(source, cancelled, limits, outcome);
+  if (signature == QByteArray("\xff\xd8", 2)) {
+    return jpegPayload(source, cancelled, limits, outcome);
+  }
   signature += source.read(6);
-  if (signature == QByteArray("\x89PNG\r\n\x1a\n", 8)) return pngPayload(source, cancelled, limits, outcome);
+  if (signature == QByteArray("\x89PNG\r\n\x1a\n", 8)) {
+    return pngPayload(source, cancelled, limits, outcome);
+  }
   if (signature.startsWith("RIFF")) {
     signature += source.read(4);
-    if (signature.size() == 12 && signature.sliced(8) == "WEBP") return webpPayload(source, cancelled, limits, outcome);
+    if (signature.size() == 12 && signature.sliced(8) == "WEBP") {
+      return webpPayload(source, cancelled, limits, outcome);
+    }
   }
   if (signature.startsWith(QByteArray("II*\0", 4)) || signature.startsWith(QByteArray("MM\0*", 4))) {
     return tiffPayload(source, cancelled, limits, outcome);
@@ -255,22 +261,32 @@ ExifFacts parseExif(const QByteArray& payload) {
     facts.longitude = lonRef == "W" ? -*longitude : *longitude;
   }
   auto altitude = rational(data.get(), EXIF_IFD_GPS, EXIF_TAG_GPS_ALTITUDE);
-  if (altitude)
+  if (altitude) {
     facts.altitudeMeters =
         integer(data.get(), EXIF_IFD_GPS, EXIF_TAG_GPS_ALTITUDE_REF).value_or(0) == 1 ? -*altitude : *altitude;
+  }
   return facts;
 }
 
 MetadataResult readMetadata(QIODevice& source, const Limits& limits, const std::atomic_bool& cancelled) {
-  if (cancelled.load()) return {Outcome::Cancelled, {}};
-  if (!source.isOpen() || !source.isReadable() || source.isSequential() || !source.seek(0))
-    return {Outcome::IoFailure, {}};
-  if (!valid(limits) || source.size() > limits.inputBytes) return {Outcome::ResourceLimit, {}};
+  if (cancelled.load()) {
+    return {.outcome = Outcome::Cancelled, .facts = {}};
+  }
+  if (!source.isOpen() || !source.isReadable() || source.isSequential() || !source.seek(0)) {
+    return {.outcome = Outcome::IoFailure, .facts = {}};
+  }
+  if (!valid(limits) || source.size() > limits.inputBytes) {
+    return {.outcome = Outcome::ResourceLimit, .facts = {}};
+  }
   Device device(source);
   Outcome outcome = Outcome::Success;
   const auto bytes = payload(device, cancelled, limits, outcome);
-  if (cancelled.load()) return {Outcome::Cancelled, {}};
-  if (device.failed) return {Outcome::IoFailure, {}};
-  return {outcome, parseExif(bytes)};
+  if (cancelled.load()) {
+    return {.outcome = Outcome::Cancelled, .facts = {}};
+  }
+  if (device.failed()) {
+    return {.outcome = Outcome::IoFailure, .facts = {}};
+  }
+  return {.outcome = outcome, .facts = parseExif(bytes)};
 }
 }  // namespace HolonightImages

@@ -9,6 +9,8 @@
 #include <atomic>
 #include <optional>
 
+// Public aggregate member names and enum representation are part of the installed API.
+// NOLINTBEGIN(readability-identifier-naming, performance-enum-size)
 namespace HolonightImages {
 enum class Outcome { Success, Unsupported, Damaged, ResourceLimit, IoFailure, Cancelled };
 enum class OrientationPolicy { Apply, Ignore };
@@ -41,7 +43,8 @@ struct Inspection {
   QImageIOHandler::Transformations orientation;
   MetadataResult metadata;
 };
-struct DecodeOptions {
+// The caller must supply every policy limit; preserve aggregate initialization semantics.
+struct DecodeOptions {  // NOLINT(cppcoreguidelines-pro-type-member-init)
   Limits limits;
   QSize bound;  // Empty means full resolution. Never upscale.
   OrientationPolicy orientation = OrientationPolicy::Apply;
@@ -61,3 +64,4 @@ DecodeResult decode(QIODevice& source, const DecodeOptions& options, const std::
 MetadataResult readMetadata(QIODevice& source, const Limits& limits, const std::atomic_bool& cancelled);
 ExifFacts parseExif(const QByteArray& payload);
 }  // namespace HolonightImages
+// NOLINTEND(readability-identifier-naming, performance-enum-size)

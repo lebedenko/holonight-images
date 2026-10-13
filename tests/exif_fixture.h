@@ -91,7 +91,7 @@ inline QByteArray sonyPayload() {
 inline QByteArray jpegSegment(quint8 marker, const QByteArray& body) {
   QByteArray length(2, '\0');
   qToBigEndian(static_cast<quint16>(body.size() + 2), length.data());
-  return QByteArray(1, char(0xff)) + char(marker) + length + body;
+  return QByteArray(1, static_cast<char>(0xff)) + static_cast<char>(marker) + length + body;
 }
 // CRC bytes are placeholders: these containers exercise metadata extraction only.
 inline QByteArray pngChunk(const QByteArray& type, const QByteArray& body) {

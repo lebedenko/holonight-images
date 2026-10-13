@@ -5,6 +5,8 @@
 
 #include <holonight_images/image.h>
 
+// Public aggregate member names and enum representation are part of the installed API.
+// NOLINTBEGIN(readability-identifier-naming, performance-enum-size)
 namespace HolonightImages {
 enum class SvgReferenceKind { Fragment, EmbeddedRaster, LocalFile, External, Invalid };
 enum class SvgResourceReason {
@@ -55,3 +57,4 @@ SvgInspection inspectSvg(const QByteArray& bytes, const std::atomic_bool& cancel
 SvgRenderResult rasterizeSvg(const QByteArray& bytes, const SvgRenderOptions& options,
                              const std::atomic_bool& cancelled);
 }  // namespace HolonightImages
+// NOLINTEND(readability-identifier-naming, performance-enum-size)

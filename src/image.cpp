@@ -26,9 +26,15 @@ Outcome readerError(QImageReader& reader) {
   }
 }
 Outcome prepare(QIODevice& source, const Limits& limits, const std::atomic_bool& cancelled) {
-  if (cancelled.load()) return Outcome::Cancelled;
-  if (!source.isOpen() || !source.isReadable() || source.isSequential() || !source.seek(0)) return Outcome::IoFailure;
-  if (!valid(limits) || source.size() > limits.inputBytes) return Outcome::ResourceLimit;
+  if (cancelled.load()) {
+    return Outcome::Cancelled;
+  }
+  if (!source.isOpen() || !source.isReadable() || source.isSequential() || !source.seek(0)) {
+    return Outcome::IoFailure;
+  }
+  if (!valid(limits) || source.size() > limits.inputBytes) {
+    return Outcome::ResourceLimit;
+  }
   return Outcome::Success;
 }
 // Only the simple single-bitstream RIFF form is eligible. Extended containers,
@@ -78,18 +84,26 @@ QImage simpleWebPFallback(QIODevice& file, const std::atomic_bool& cancelled, bo
 
 // Header-only companion for the same narrowly eligible RIFF bitstream fallback.
 void inspectSimpleWebP(QIODevice& device, Inspection& info, const Limits& limits) {
-  if (!device.seek(0)) return;
+  if (!device.seek(0)) {
+    return;
+  }
   const auto bytes = device.peek(32);
   if (bytes.size() < 20 || bytes.first(4) != "RIFF" || bytes.sliced(8, 4) != "WEBP" ||
-      (bytes.sliced(12, 4) != "VP8 " && bytes.sliced(12, 4) != "VP8L"))
+      (bytes.sliced(12, 4) != "VP8 " && bytes.sliced(12, 4) != "VP8L")) {
     return;
-  const quint64 riff = qFromLittleEndian<quint32>(bytes.constData() + 4);
-  const quint64 chunk = qFromLittleEndian<quint32>(bytes.constData() + 16);
-  if (riff + 8 != quint64(device.size()) || 20 + chunk + (chunk & 1) != quint64(device.size())) return;
-  int width = 0, height = 0;
-  if (!WebPGetInfo(static_cast<const uint8_t*>(static_cast<const void*>(bytes.constData())), bytes.size(), &width,
-                   &height))
+  }
+  const quint64 riff = qFromLittleEndian<quint32>(bytes.sliced(4, 4).constData());
+  const quint64 chunk = qFromLittleEndian<quint32>(bytes.sliced(16, 4).constData());
+  if (riff + 8 != static_cast<quint64>(device.size()) ||
+      20 + chunk + (chunk & 1) != static_cast<quint64>(device.size())) {
     return;
+  }
+  int width = 0;
+  int height = 0;
+  if (WebPGetInfo(static_cast<const uint8_t*>(static_cast<const void*>(bytes.constData())), bytes.size(), &width,
+                  &height) == 0) {
+    return;
+  }
   info.format = "webp";
   info.sourceSize = {width, height};
   info.orientedSize = info.sourceSize;
@@ -106,19 +120,25 @@ Inspection header(QImageReader& reader, const Limits& limits, OrientationPolicy 
   info.sourceSize = reader.size();
   info.orientation = reader.transformation();
   info.orientedSize = info.sourceSize;
-  if (policy == OrientationPolicy::Apply && info.orientation.testFlag(QImageIOHandler::TransformationRotate90))
+  if (policy == OrientationPolicy::Apply && info.orientation.testFlag(QImageIOHandler::TransformationRotate90)) {
     info.orientedSize.transpose();
-  if (info.sourceSize.isEmpty())
+  }
+  if (info.sourceSize.isEmpty()) {
     info.outcome = Outcome::Damaged;
-  else if (!acceptableSize(info.sourceSize, limits))
+  } else if (!acceptableSize(info.sourceSize, limits)) {
     info.outcome = Outcome::ResourceLimit;
+  }
   return info;
 }
 }  // namespace
 QByteArray canonicalFormat(QByteArray format) {
   format = format.toLower();
-  if (format == "jpg" || format == "jpe") return "jpeg";
-  if (format == "tif") return "tiff";
+  if (format == "jpg" || format == "jpe") {
+    return "jpeg";
+  }
+  if (format == "tif") {
+    return "tiff";
+  }
   return format;
 }
 QStringList supportedSuffixes() {
@@ -127,62 +147,88 @@ QStringList supportedSuffixes() {
     suffixes.append(QString::fromLatin1(format).toLower());
     const auto canonical = canonicalFormat(format);
     suffixes.append(QString::fromLatin1(canonical));
-    if (canonical == "jpeg") suffixes.append("jpg");
-    if (canonical == "tiff") suffixes.append("tif");
+    if (canonical == "jpeg") {
+      suffixes.append("jpg");
+    }
+    if (canonical == "tiff") {
+      suffixes.append("tif");
+    }
   }
   suffixes.removeDuplicates();
   suffixes.sort();
   return suffixes;
 }
-Inspection inspect(QIODevice& source, const Limits& limits, const std::atomic_bool& cancelled, OrientationPolicy policy,
-                   bool metadata) {
+Inspection inspect(QIODevice& source, const Limits& limits, const std::atomic_bool& cancelled,
+                   OrientationPolicy orientation, bool metadata) {
   Inspection info;
   info.outcome = prepare(source, limits, cancelled);
-  if (info.outcome != Outcome::Success) return info;
+  if (info.outcome != Outcome::Success) {
+    return info;
+  }
   Device device(source);
   {
     QImageReader reader(&device);
-    reader.setAutoTransform(policy == OrientationPolicy::Apply);
-    info = header(reader, limits, policy);
+    reader.setAutoTransform(orientation == OrientationPolicy::Apply);
+    info = header(reader, limits, orientation);
   }
-  if (!cancelled.load() && (info.outcome == Outcome::Unsupported || info.outcome == Outcome::Damaged))
+  if (!cancelled.load() && (info.outcome == Outcome::Unsupported || info.outcome == Outcome::Damaged)) {
     inspectSimpleWebP(device, info, limits);
-  if (device.failed) info.outcome = Outcome::IoFailure;
-  if (cancelled.load()) info.outcome = Outcome::Cancelled;
-  if (metadata && info.outcome == Outcome::Success) info.metadata = readMetadata(source, limits, cancelled);
-  if (cancelled.load()) info.outcome = Outcome::Cancelled;
+  }
+  if (device.failed()) {
+    info.outcome = Outcome::IoFailure;
+  }
+  if (cancelled.load()) {
+    info.outcome = Outcome::Cancelled;
+  }
+  if (metadata && info.outcome == Outcome::Success) {
+    info.metadata = readMetadata(source, limits, cancelled);
+  }
+  if (cancelled.load()) {
+    info.outcome = Outcome::Cancelled;
+  }
   return info;
 }
+// Keep reader lifetime, fallback and outcome precedence together for policy review.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 DecodeResult decode(QIODevice& source, const DecodeOptions& options, const std::atomic_bool& cancelled) {
   DecodeResult result;
   result.outcome = prepare(source, options.limits, cancelled);
-  if (result.outcome != Outcome::Success) return result;
+  if (result.outcome != Outcome::Success) {
+    return result;
+  }
   Device device(source);
   {
     QImageReader reader(&device);
     reader.setAutoTransform(options.orientation == OrientationPolicy::Apply);
     result.inspection = header(reader, options.limits, options.orientation);
     result.outcome = result.inspection.outcome;
-    if (cancelled.load()) result.outcome = Outcome::Cancelled;
+    if (cancelled.load()) {
+      result.outcome = Outcome::Cancelled;
+    }
     if (result.outcome == Outcome::Success) {
       if (!options.bound.isEmpty()) {
         auto target = result.inspection.orientedSize
                           .scaled(options.bound.boundedTo(result.inspection.orientedSize), Qt::KeepAspectRatio)
                           .expandedTo(QSize(1, 1));
         if (options.orientation == OrientationPolicy::Apply &&
-            result.inspection.orientation.testFlag(QImageIOHandler::TransformationRotate90))
+            result.inspection.orientation.testFlag(QImageIOHandler::TransformationRotate90)) {
           target.transpose();
+        }
         reader.setScaledSize(target);
       }
       result.image = reader.read();
-      if (result.image.isNull()) result.outcome = readerError(reader);
+      if (result.image.isNull()) {
+        result.outcome = readerError(reader);
+      }
     }
   }  // Reader releases exclusive device access before fallback seeks.
-  if (!device.failed && !cancelled.load() &&
+  if (!device.failed() && !cancelled.load() &&
       (result.outcome == Outcome::Unsupported || result.outcome == Outcome::Damaged)) {
     bool limited = false;
     result.image = simpleWebPFallback(device, cancelled, limited, options.limits);
-    if (limited) result.outcome = Outcome::ResourceLimit;
+    if (limited) {
+      result.outcome = Outcome::ResourceLimit;
+    }
     if (!result.image.isNull()) {
       result.outcome = Outcome::Success;
       result.inspection.format = "webp";
@@ -191,18 +237,27 @@ DecodeResult decode(QIODevice& source, const DecodeOptions& options, const std::
       result.inspection.outcome = Outcome::Success;
     }
   }
-  if (device.failed) result.outcome = Outcome::IoFailure;
-  if (cancelled.load()) result.outcome = Outcome::Cancelled;
+  if (device.failed()) {
+    result.outcome = Outcome::IoFailure;
+  }
+  if (cancelled.load()) {
+    result.outcome = Outcome::Cancelled;
+  }
   if (result.outcome == Outcome::Success) {
     if (result.image.sizeInBytes() > options.limits.decodedBytes ||
-        !acceptableSize(result.image.size(), options.limits))
+        !acceptableSize(result.image.size(), options.limits)) {
       result.outcome = Outcome::ResourceLimit;
-    else if (!options.bound.isEmpty() &&
-             (result.image.width() > options.bound.width() || result.image.height() > options.bound.height()))
+    } else if (!options.bound.isEmpty() &&
+               (result.image.width() > options.bound.width() || result.image.height() > options.bound.height())) {
       result.image = result.image.scaled(options.bound, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
   }
-  if (cancelled.load()) result.outcome = Outcome::Cancelled;
-  if (result.outcome != Outcome::Success) result.image = {};
+  if (cancelled.load()) {
+    result.outcome = Outcome::Cancelled;
+  }
+  if (result.outcome != Outcome::Success) {
+    result.image = {};
+  }
   return result;
 }
 }  // namespace HolonightImages

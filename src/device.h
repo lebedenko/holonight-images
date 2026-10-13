@@ -8,12 +8,12 @@ namespace HolonightImages {
 class Device final : public QIODevice {
  public:
   explicit Device(QIODevice& source) : source_(source) { open(ReadOnly | Unbuffered); }
-  bool failed = false;
-  qint64 size() const override { return source_.size(); }
-  bool isSequential() const override { return false; }
+  [[nodiscard]] bool failed() const { return failed_; }
+  [[nodiscard]] qint64 size() const override { return source_.size(); }
+  [[nodiscard]] bool isSequential() const override { return false; }
   bool seek(qint64 offset) override {
     if (!source_.seek(offset)) {
-      failed = true;
+      failed_ = true;
       return false;
     }
     return QIODevice::seek(offset);
@@ -22,16 +22,19 @@ class Device final : public QIODevice {
  protected:
   qint64 readData(char* data, qint64 size) override {
     const auto count = source_.read(data, size);
-    if (count < 0) failed = true;
+    if (count < 0) {
+      failed_ = true;
+    }
     return count;
   }
-  qint64 writeData(const char*, qint64) override { return -1; }
+  qint64 writeData(const char* /*data*/, qint64 /*len*/) override { return -1; }
 
  private:
   QIODevice& source_;
+  bool failed_ = false;
 };
-inline bool valid(const Limits& l) {
-  return l.inputBytes > 0 && l.sourcePixels > 0 && l.sourceExtent > 0 && l.decodedBytes > 0 && l.metadataBytes > 0 &&
-         l.tiffMetadataBytes > 0 && l.metadataRecords > 0;
+inline bool valid(const Limits& limits) {
+  return limits.inputBytes > 0 && limits.sourcePixels > 0 && limits.sourceExtent > 0 && limits.decodedBytes > 0 &&
+         limits.metadataBytes > 0 && limits.tiffMetadataBytes > 0 && limits.metadataRecords > 0;
 }
 }  // namespace HolonightImages
