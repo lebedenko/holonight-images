@@ -8,5 +8,91 @@
   ],
   "dependencies": [],
   "qml_modules": [],
-  "wayland": false
+  "wayland": false,
+  "external_dependencies": [
+    {
+      "id": "qt",
+      "scope": [
+        "build"
+      ],
+      "components": [
+        "Core",
+        "Gui",
+        "Svg"
+      ]
+    },
+    {
+      "id": "exif",
+      "scope": [
+        "build"
+      ]
+    },
+    {
+      "id": "webp",
+      "scope": [
+        "build"
+      ]
+    },
+    {
+      "id": "imageformats",
+      "scope": [
+        "runtime"
+      ]
+    },
+    {
+      "id": "compiler",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "cmake",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "ninja",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "pkgconf",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "git",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "python",
+      "scope": [
+        "tool"
+      ]
+    },
+    {
+      "id": "gtest",
+      "scope": [
+        "test"
+      ],
+      "targets": [
+        "GTest::gtest"
+      ]
+    },
+    {
+      "id": "qt",
+      "scope": [
+        "test"
+      ],
+      "components": [
+        "Test"
+      ]
+    }
+  ],
+  "external_features": {}
 }

@@ -32,3 +32,14 @@ Rootless Podman uses `--userns=keep-id` so preserved private file modes remain
 readable under the requested UID/GID. A fake-runtime launcher regression verifies
 user mapping and the read-only input mount. Podman is not installed on this host;
 its real-runtime integration is unverified. The verified Docker path is unchanged.
+
+## EDM-009 supersession — 2026-10-13
+
+The preceding CI-004 configuration and package identities are historical evidence.
+EDM-009 replaces supplemental codec acquisition with the qualified EDM-024 full Arch
+image and installed packages. Explicit `task ci:prepare` acquires both immutable
+build/licensing images and records prerequisite/environment evidence; `task ci`
+requires compatible preparation and runs four offline lanes. The original Release
+provider configuration, all three CTest registrations, parallelism two, snapshots
+and rootless mapping are retained. See the current
+[dependency SPEC](../external-dependency-management/SPEC.md) and contributor README.

@@ -4,6 +4,10 @@ tasks:
     desc: Rehearse all push validation in isolated containers
     cmds:
     - python3 scripts/ci/run.py
+  ci:prepare:
+    desc: Acquire qualified CI images and record installed prerequisites explicitly
+    cmds:
+    - python3 scripts/ci/run.py --prepare
   tooling:doctor:
     desc: doctor using standalone tooling
     cmds:
@@ -21,7 +25,7 @@ tasks:
     cmds:
     - serena project index "{{.TASKFILE_DIR}}"
   deps:
-    desc: deps using standalone tooling
+    desc: Validate installed external prerequisites (no internal providers)
     cmds:
     - python3 tooling/workflow.py deps --preset {{.PRESET}}
   configure:

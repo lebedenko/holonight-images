@@ -1,0 +1,792 @@
+{
+  "schema_version": 1,
+  "dependencies": {
+    "qt": {
+      "discovery": "cmake",
+      "package": "Qt6",
+      "packages": {
+        "arch": [
+          "qt6-base"
+        ],
+        "debian": [
+          "qt6-base-dev"
+        ]
+      },
+      "version": "6.11",
+      "component_packages": {
+        "Qml": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-dev"
+          ]
+        },
+        "Quick": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-dev"
+          ]
+        },
+        "QuickControls2": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-dev"
+          ]
+        },
+        "QuickShapes": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-dev"
+          ]
+        },
+        "QuickTest": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-dev"
+          ]
+        },
+        "QmlPrivate": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-private-dev"
+          ]
+        },
+        "QuickPrivate": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-private-dev"
+          ]
+        },
+        "QuickControls2Private": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-private-dev"
+          ]
+        },
+        "QuickTemplates2Private": {
+          "arch": [
+            "qt6-declarative"
+          ],
+          "debian": [
+            "qt6-declarative-private-dev"
+          ]
+        },
+        "Svg": {
+          "arch": [
+            "qt6-svg"
+          ],
+          "debian": [
+            "libqt6svg6-dev"
+          ]
+        },
+        "GuiPrivate": {
+          "arch": [
+            "qt6-base"
+          ],
+          "debian": [
+            "qt6-base-private-dev"
+          ]
+        },
+        "WaylandClient": {
+          "arch": [
+            "qt6-base"
+          ],
+          "debian": [
+            "qt6-wayland-dev"
+          ]
+        },
+        "WaylandClientPrivate": {
+          "arch": [
+            "qt6-base"
+          ],
+          "debian": [
+            "qt6-wayland-private-dev"
+          ]
+        }
+      }
+    },
+    "qt-wayland": {
+      "discovery": "cmake",
+      "package": "Qt6WaylandScannerTools",
+      "packages": {
+        "arch": [
+          "qt6-base"
+        ],
+        "debian": [
+          "qt6-wayland-dev",
+          "qt6-wayland-private-dev",
+          "qt6-wayland-dev-tools"
+        ]
+      },
+      "version": "6.11"
+    },
+    "gtest": {
+      "discovery": "cmake",
+      "package": "GTest",
+      "packages": {
+        "arch": [
+          "gtest"
+        ],
+        "debian": [
+          "libgtest-dev",
+          "libgmock-dev"
+        ]
+      },
+      "version": "1.14"
+    },
+    "toml": {
+      "discovery": "cmake",
+      "package": "tomlplusplus",
+      "packages": {
+        "arch": [
+          "tomlplusplus"
+        ],
+        "debian": [
+          "libtomlplusplus-dev"
+        ]
+      }
+    },
+    "json": {
+      "discovery": "cmake",
+      "package": "nlohmann_json",
+      "packages": {
+        "arch": [
+          "nlohmann-json"
+        ],
+        "debian": [
+          "nlohmann-json3-dev"
+        ]
+      }
+    },
+    "sqlite": {
+      "discovery": "cmake",
+      "package": "SQLite3",
+      "packages": {
+        "arch": [
+          "sqlite"
+        ],
+        "debian": [
+          "libsqlite3-dev"
+        ]
+      }
+    },
+    "qmarkdown": {
+      "discovery": "cmake",
+      "package": "QMarkdown",
+      "packages": {
+        "arch": [
+          "qmarkdown"
+        ],
+        "debian": [
+          "qmarkdown-dev"
+        ]
+      },
+      "version": "1.0...<2.0",
+      "targets": [
+        "QMarkdown::QMarkdown"
+      ]
+    },
+    "kconfig": {
+      "discovery": "cmake",
+      "package": "KF6Config",
+      "packages": {
+        "arch": [
+          "kconfig"
+        ],
+        "debian": [
+          "libkf6config-dev"
+        ]
+      },
+      "targets": [
+        "KF6::ConfigCore",
+        "KF6::ConfigGui"
+      ]
+    },
+    "syntax": {
+      "discovery": "cmake",
+      "package": "KF6SyntaxHighlighting",
+      "packages": {
+        "arch": [
+          "syntax-highlighting"
+        ],
+        "debian": [
+          "libkf6syntaxhighlighting-dev"
+        ]
+      }
+    },
+    "layer-shell": {
+      "discovery": "cmake",
+      "package": "LayerShellQt",
+      "packages": {
+        "arch": [
+          "layer-shell-qt"
+        ],
+        "debian": [
+          "liblayershellqtinterface-dev"
+        ]
+      }
+    },
+    "icu": {
+      "discovery": "cmake",
+      "package": "ICU",
+      "packages": {
+        "arch": [
+          "icu"
+        ],
+        "debian": [
+          "libicu-dev"
+        ]
+      },
+      "components": [
+        "uc"
+      ]
+    },
+    "pulse": {
+      "discovery": "pkg-config",
+      "package": "libpulse",
+      "packages": {
+        "arch": [
+          "libpulse"
+        ],
+        "debian": [
+          "libpulse-dev"
+        ]
+      }
+    },
+    "wayland": {
+      "discovery": "pkg-config",
+      "package": "wayland-client",
+      "packages": {
+        "arch": [
+          "wayland"
+        ],
+        "debian": [
+          "libwayland-dev"
+        ]
+      }
+    },
+    "wayland-protocols": {
+      "discovery": "pkg-config",
+      "package": "wayland-protocols",
+      "packages": {
+        "arch": [
+          "wayland-protocols"
+        ],
+        "debian": [
+          "wayland-protocols"
+        ]
+      }
+    },
+    "wayland-scanner": {
+      "discovery": "pkg-config",
+      "package": "wayland-scanner",
+      "packages": {
+        "arch": [
+          "wayland"
+        ],
+        "debian": [
+          "libwayland-bin"
+        ]
+      }
+    },
+    "secret": {
+      "discovery": "pkg-config",
+      "package": "libsecret-1",
+      "packages": {
+        "arch": [
+          "libsecret"
+        ],
+        "debian": [
+          "libsecret-1-dev"
+        ]
+      }
+    },
+    "polkit": {
+      "discovery": "pkg-config",
+      "package": "polkit-agent-1",
+      "packages": {
+        "arch": [
+          "polkit"
+        ],
+        "debian": [
+          "libpolkit-agent-1-dev"
+        ]
+      }
+    },
+    "polkit-qt-agent": {
+      "discovery": "pkg-config",
+      "package": "polkit-qt6-agent-1>=0.200.0",
+      "packages": {
+        "arch": [
+          "polkit-qt6"
+        ],
+        "debian": [
+          "libpolkit-qt6-1-dev"
+        ]
+      }
+    },
+    "polkit-qt-core": {
+      "discovery": "pkg-config",
+      "package": "polkit-qt6-core-1>=0.200.0",
+      "packages": {
+        "arch": [
+          "polkit-qt6"
+        ],
+        "debian": [
+          "libpolkit-qt6-1-dev"
+        ]
+      }
+    },
+    "json-glib": {
+      "discovery": "pkg-config",
+      "package": "json-glib-1.0",
+      "packages": {
+        "arch": [
+          "json-glib"
+        ],
+        "debian": [
+          "libjson-glib-dev"
+        ]
+      }
+    },
+    "gio": {
+      "discovery": "pkg-config",
+      "package": "gio-2.0",
+      "packages": {
+        "arch": [
+          "glib2"
+        ],
+        "debian": [
+          "libglib2.0-dev"
+        ]
+      }
+    },
+    "exif": {
+      "discovery": "pkg-config",
+      "package": "libexif",
+      "packages": {
+        "arch": [
+          "libexif"
+        ],
+        "debian": [
+          "libexif-dev"
+        ]
+      }
+    },
+    "webp": {
+      "discovery": "pkg-config",
+      "package": "libwebp",
+      "packages": {
+        "arch": [
+          "libwebp"
+        ],
+        "debian": [
+          "libwebp-dev"
+        ]
+      }
+    },
+    "md4c": {
+      "discovery": "pkg-config",
+      "package": "md4c",
+      "packages": {
+        "arch": [
+          "md4c"
+        ],
+        "debian": [
+          "libmd4c-dev"
+        ]
+      }
+    },
+    "alpm": {
+      "discovery": "pkg-config",
+      "package": "libalpm",
+      "packages": {
+        "arch": [
+          "pacman"
+        ],
+        "debian": [
+          "libalpm-dev"
+        ]
+      }
+    },
+    "systemd": {
+      "discovery": "pkg-config",
+      "package": "libsystemd",
+      "packages": {
+        "arch": [
+          "systemd"
+        ],
+        "debian": [
+          "libsystemd-dev"
+        ]
+      }
+    },
+    "gtk3": {
+      "discovery": "pkg-config",
+      "package": "gtk+-3.0",
+      "packages": {
+        "arch": [
+          "gtk3"
+        ],
+        "debian": [
+          "libgtk-3-dev"
+        ]
+      }
+    },
+    "gtk4": {
+      "discovery": "pkg-config",
+      "package": "gtk4",
+      "packages": {
+        "arch": [
+          "gtk4"
+        ],
+        "debian": [
+          "libgtk-4-dev"
+        ]
+      }
+    },
+    "python": {
+      "discovery": "tool",
+      "package": "python3",
+      "packages": {
+        "arch": [
+          "python"
+        ],
+        "debian": [
+          "python3"
+        ]
+      },
+      "version": "3.10"
+    },
+    "cmake": {
+      "discovery": "tool",
+      "package": "cmake",
+      "packages": {
+        "arch": [
+          "cmake"
+        ],
+        "debian": [
+          "cmake"
+        ]
+      }
+    },
+    "ninja": {
+      "discovery": "tool",
+      "package": "ninja",
+      "packages": {
+        "arch": [
+          "ninja"
+        ],
+        "debian": [
+          "ninja-build"
+        ]
+      }
+    },
+    "compiler": {
+      "discovery": "tool",
+      "package": "c++",
+      "packages": {
+        "arch": [
+          "base-devel"
+        ],
+        "debian": [
+          "build-essential"
+        ]
+      }
+    },
+    "pkgconf": {
+      "discovery": "tool",
+      "package": "pkg-config",
+      "packages": {
+        "arch": [
+          "pkgconf"
+        ],
+        "debian": [
+          "pkg-config"
+        ]
+      }
+    },
+    "git": {
+      "discovery": "tool",
+      "package": "git",
+      "packages": {
+        "arch": [
+          "git"
+        ],
+        "debian": [
+          "git"
+        ]
+      }
+    },
+    "task": {
+      "discovery": "tool",
+      "package": "task",
+      "packages": {
+        "arch": [
+          "go-task"
+        ],
+        "debian": [
+          "go-task"
+        ]
+      }
+    },
+    "reuse": {
+      "discovery": "tool",
+      "package": "reuse",
+      "packages": {
+        "arch": [
+          "reuse"
+        ],
+        "debian": [
+          "reuse"
+        ]
+      }
+    },
+    "clang": {
+      "discovery": "tool",
+      "package": "clang-tidy",
+      "packages": {
+        "arch": [
+          "clang"
+        ],
+        "debian": [
+          "clang",
+          "clang-tidy",
+          "clang-format"
+        ]
+      }
+    },
+    "xvfb": {
+      "discovery": "tool",
+      "package": "xvfb-run",
+      "packages": {
+        "arch": [
+          "xorg-server-xvfb"
+        ],
+        "debian": [
+          "xvfb"
+        ]
+      }
+    },
+    "dbus": {
+      "discovery": "tool",
+      "package": "dbus-run-session",
+      "packages": {
+        "arch": [
+          "dbus"
+        ],
+        "debian": [
+          "dbus"
+        ]
+      }
+    },
+    "fzf": {
+      "discovery": "tool",
+      "package": "fzf",
+      "packages": {
+        "arch": [
+          "fzf"
+        ],
+        "debian": [
+          "fzf"
+        ]
+      }
+    },
+    "bwrap": {
+      "discovery": "tool",
+      "package": "bwrap",
+      "packages": {
+        "arch": [
+          "bubblewrap"
+        ],
+        "debian": [
+          "bubblewrap"
+        ]
+      }
+    },
+    "sway": {
+      "discovery": "tool",
+      "package": "sway",
+      "packages": {
+        "arch": [
+          "sway"
+        ],
+        "debian": [
+          "sway"
+        ]
+      }
+    },
+    "patchelf": {
+      "discovery": "tool",
+      "package": "patchelf",
+      "packages": {
+        "arch": [
+          "patchelf"
+        ],
+        "debian": [
+          "patchelf"
+        ]
+      }
+    },
+    "hicolor": {
+      "discovery": "runtime",
+      "package": "hicolor",
+      "packages": {
+        "arch": [
+          "hicolor-icon-theme"
+        ],
+        "debian": [
+          "hicolor-icon-theme"
+        ]
+      }
+    },
+    "imageformats": {
+      "discovery": "runtime",
+      "package": "imageformats",
+      "packages": {
+        "arch": [
+          "qt6-imageformats"
+        ],
+        "debian": [
+          "qt6-image-formats-plugins"
+        ]
+      }
+    },
+    "udisks": {
+      "discovery": "runtime",
+      "package": "udisks",
+      "packages": {
+        "arch": [
+          "udisks2"
+        ],
+        "debian": [
+          "udisks2"
+        ]
+      }
+    },
+    "greetd": {
+      "discovery": "runtime",
+      "package": "greetd",
+      "packages": {
+        "arch": [
+          "greetd"
+        ],
+        "debian": [
+          "greetd"
+        ]
+      }
+    },
+    "cage": {
+      "discovery": "runtime",
+      "package": "cage",
+      "packages": {
+        "arch": [
+          "cage"
+        ],
+        "debian": [
+          "cage"
+        ]
+      }
+    },
+    "hyprlock": {
+      "discovery": "runtime",
+      "package": "hyprlock",
+      "packages": {
+        "arch": [
+          "hyprlock"
+        ],
+        "debian": [
+          "hyprlock"
+        ]
+      }
+    },
+    "fonts": {
+      "discovery": "runtime",
+      "package": "fonts",
+      "packages": {
+        "arch": [
+          "ttf-dejavu"
+        ],
+        "debian": [
+          "fonts-dejavu-core"
+        ]
+      }
+    },
+    "mime": {
+      "discovery": "runtime",
+      "package": "mime",
+      "packages": {
+        "arch": [
+          "shared-mime-info"
+        ],
+        "debian": [
+          "shared-mime-info"
+        ]
+      }
+    },
+    "python-render": {
+      "discovery": "runtime",
+      "package": "python-render",
+      "packages": {
+        "arch": [
+          "python-gobject",
+          "python-cairo",
+          "gdk-pixbuf2",
+          "librsvg"
+        ],
+        "debian": [
+          "python3-gi",
+          "python3-cairo",
+          "gir1.2-gdkpixbuf-2.0",
+          "librsvg2-bin"
+        ]
+      }
+    },
+    "kiconthemes": {
+      "discovery": "cmake",
+      "package": "KF6IconThemes",
+      "packages": {
+        "arch": [
+          "kiconthemes"
+        ],
+        "debian": [
+          "libkf6iconthemes-dev"
+        ]
+      }
+    },
+    "qt5": {
+      "discovery": "cmake",
+      "package": "Qt5",
+      "version": "5.15",
+      "components": [
+        "Core",
+        "Gui",
+        "Test",
+        "Widgets"
+      ],
+      "packages": {
+        "arch": [
+          "qt5-base"
+        ],
+        "debian": [
+          "qtbase5-dev"
+        ]
+      }
+    }
+  }
+}

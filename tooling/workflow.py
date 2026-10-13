@@ -13,6 +13,7 @@ import subprocess
 import sys
 
 from compilation import atomic_json, merge
+from external import check as check_external, discovery_environment, external_prefix, requirements as external_requirements
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,7 +23,11 @@ def run(args, **kwargs):
 
 
 def settings():
-    return json.loads((ROOT / 'tooling/module.json').read_text())
+    config = json.loads((ROOT / 'tooling/module.json').read_text())
+    if 'external_dependencies' not in config:
+        raise RuntimeError('Tooling 2.0 requires external dependency declarations in module.json. '
+                           'Adopt the module metadata before synchronizing this bundle.')
+    return config
 
 
 def prefix():
@@ -40,15 +45,22 @@ def configured_prefix(preset='test'):
     return prefix()
 
 
+def cmake_prefixes(location):
+    return ";".join(str(p) for p in (location, external_prefix()) if p)
+
+
 def packages(config, location):
     result = {}
-    for dep in config['dependencies']:
+    for dep in config.get('dependencies', []):
         package = dep['package']
         candidates = sorted(location.glob(f'lib*/cmake/{package}/{package}Config.cmake'))
         candidates += sorted(location.glob(f'share/{package}/cmake/{package}Config.cmake'))
         if not candidates:
             raise RuntimeError(f'Missing {package} in {location}. Run task deps with local source overrides, '
                                'or supply HOLONIGHT_DEPENDENCY_PREFIX containing all providers.')
+        unique = {p.resolve() for p in candidates}
+        if len(unique) > 1:
+            raise RuntimeError(f'Conflicting {package} packages in {location}: ' + ', '.join(map(str, sorted(unique))))
         result[package] = candidates[0].parent
     return result
 
@@ -62,14 +74,168 @@ def dependency_source(dep):
     return source
 
 
-def prepare(config):
+def preset_variables(preset):
+    path = ROOT / 'CMakePresets.json'
+    if not preset or not path.is_file():
+        return {}
+    definitions = {item['name']: item for item in json.loads(path.read_text()).get('configurePresets', [])}
+    def variables(name, visiting=()):
+        if name in visiting:
+            raise RuntimeError('CMake preset inheritance cycle: ' + name)
+        item = definitions.get(name, {})
+        parents = item.get('inherits', [])
+        if isinstance(parents, str):
+            parents = [parents]
+        result = {}
+        for parent in reversed(parents):
+            result.update(variables(parent, (*visiting, name)))
+        result.update(item.get('cacheVariables', {}))
+        return result
+    return variables(preset)
+
+
+def build_context(preset):
+    result = {}
+    for key, value in preset_variables(preset).items():
+        if not (re.fullmatch(r'CMAKE_(?:C|CXX)_COMPILER|CMAKE_TOOLCHAIN_FILE|CMAKE_(?:C|CXX|EXE_LINKER|SHARED_LINKER)_FLAGS(?:_\w+)?', key)
+                or re.fullmatch(r'Qt6\w*_DIR|Python3_EXECUTABLE', key)):
+            continue
+        if isinstance(value, dict):
+            value = value['value']
+        value = str(value).replace('${sourceDir}', str(ROOT))
+        value = re.sub(r'\$env\{([^}]+)\}', lambda match: os.environ.get(match[1], ''), value)
+        result[key] = value
+    return result
+
+
+def selected_features(config, preset=None):
+    selected = dict(config.get('external_features', {}))
+    for key, value in preset_variables(preset).items():
+        if key in selected:
+            if isinstance(value, dict):
+                value = value['value']
+            if str(value).upper() not in {'ON', 'OFF', 'TRUE', 'FALSE', '1', '0'}:
+                raise RuntimeError(f'Feature {key} must have an explicit boolean value')
+            selected[key] = str(value).upper() in {'ON', 'TRUE', '1'}
+    for assignment in shlex.split(os.environ.get('HOLONIGHT_BUILD_FEATURES', '')):
+        key, value = assignment.split('=', 1)
+        if key not in selected or value not in {'ON', 'OFF'}:
+            raise RuntimeError(f'Invalid feature {assignment}; use declared OPTION=ON|OFF values')
+        selected[key] = value == 'ON'
+    return selected
+
+
+def source_signature(source):
+    git = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+    revision = git.stdout.strip() if git.returncode == 0 else None
+    digest = hashlib.sha256()
+    if revision:
+        names = subprocess.check_output(['git', '-C', str(source), 'ls-files', '--cached', '--others',
+                                         '--exclude-standard', '-z']).decode().split('\0')
+    else:
+        names = [str(p.relative_to(source)) for p in source.rglob('*') if p.is_file()]
+    for name in sorted(set(names)):
+        if not name or set(Path(name).parts) & {'build', '.git', '.cache', '.serena'}:
+            continue
+        path = source / name
+        digest.update(name.encode())
+        digest.update(path.read_bytes() if path.is_file() else b'<removed>')
+    return {'source': str(source), 'revision': revision, 'content': digest.hexdigest()}
+
+
+def toolchain_signature(context=None):
+    context = context or {}
+    result = {}
+    for name, command in [('cc', context.get('CMAKE_C_COMPILER', os.environ.get('CC', 'cc'))), ('cxx', context.get('CMAKE_CXX_COMPILER', os.environ.get('CXX', 'c++'))),
+                          ('cmake', 'cmake'), ('ninja', 'ninja')]:
+        args = [command] if shutil.which(command) else shlex.split(command)
+        path = shutil.which(args[0])
+        version = subprocess.check_output([*args, '--version'], text=True).strip()
+        result[name] = {'command': args, 'path': str(Path(path).resolve()) if path else None, 'version': version}
+    result['bundle_version'] = (Path(__file__).parent / 'VERSION').read_text().strip()
+    result['environment'] = {key: value for key, value in sorted(os.environ.items())
+                             if key in {'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'Qt6_DIR',
+                                        'CMAKE_PREFIX_PATH', 'CMAKE_TOOLCHAIN_FILE', 'PKG_CONFIG_PATH',
+                                        'HOLONIGHT_EXTERNAL_PREFIX'}}
+    result['preset_context'] = context
+    toolchain = context.get('CMAKE_TOOLCHAIN_FILE', os.environ.get('CMAKE_TOOLCHAIN_FILE'))
+    if toolchain:
+        result['toolchain_content'] = hashlib.sha256(Path(toolchain).read_bytes()).hexdigest()
+    return result
+
+
+def prepare_external(config, context=None, features=None):
+    context = context or {}
+    sources = [dep for dep in config.get('external_sources', []) if os.environ.get(dep['source_variable'])]
+    if sources and config.get('external_dependencies'):
+        active = {item['id'] for item in external_requirements(config, features=features)}
+        sources = [dep for dep in sources if dep.get('id', dep['module']) in active]
+    if sources and os.environ.get('HOLONIGHT_EXTERNAL_PREFIX'):
+        raise RuntimeError('Choose supplied external sources or HOLONIGHT_EXTERNAL_PREFIX with installed packages; '
+                           'conflicting external providers are not prepared implicitly.')
+    if not sources:
+        return
+    location = ROOT / 'build/external/prefix'
+    # Probe the system/toolchain requirements first, excluding only explicitly supplied external sources.
+    provided = {dep['module'] for dep in sources}
+    prerequisites = dict(config, external_dependencies=[item for item in config.get('external_dependencies', [])
+                                                       if item['id'] not in provided])
+    external = check_external(prerequisites, cmake_options=context)
+    state_path = ROOT / 'build/external/provider-state.json'
+    try:
+        previous = json.loads(state_path.read_text())
+    except (OSError, ValueError):
+        previous = {}
+    state = {dep['module']: {**source_signature(dependency_source(dep)), 'options': dep.get('options', []),
+                            'toolchain': toolchain_signature(context), 'external': external} for dep in sources}
+    artifacts = location.exists() or any((ROOT / 'build/external').glob('**/CMakeCache.txt'))
+    if (previous or artifacts) and previous != state:
+        number = 1
+        while (ROOT / f'build/external.previous-{number}').exists():
+            number += 1
+        (ROOT / 'build/external').rename(ROOT / f'build/external.previous-{number}')
+        previous = {}
+    for dep in sources:
+        if previous.get(dep['module']) == state[dep['module']]:
+            try:
+                packages({'dependencies': [dep]}, location)
+                continue
+            except RuntimeError:
+                pass
+        build = ROOT / 'build/external' / dep['module']
+        run(['cmake', '-S', dependency_source(dep), '-B', build, '-G', 'Ninja',
+             '-DCMAKE_BUILD_TYPE=Debug', '-DBUILD_TESTING=OFF', '-DCMAKE_INSTALL_LIBDIR=lib',
+             f'-DCMAKE_INSTALL_PREFIX={location}', *[f'-D{key}={value}' for key, value in context.items()],
+             *dep.get('options', [])], env=discovery_environment())
+        run(['cmake', '--build', build, '--parallel', os.environ.get('JOBS', '2')])
+        run(['cmake', '--install', build])
+    atomic_json(state_path, state)
+    os.environ['HOLONIGHT_EXTERNAL_PREFIX'] = str(location)
+
+
+def provider_options(source, config):
+    text = (source / 'CMakeLists.txt').read_text()
+    declared = set(re.findall(r'option\s*\(\s*(\w+)', text, re.I))
+    if re.search(r'include\s*\(\s*CTest\s*\)', text, re.I):
+        declared.add('BUILD_TESTING')
+    values = {'BUILD_TESTS': False, 'BUILD_TESTING': False, 'BUILD_DEMO': False,
+              'BUILD_CONTROLS_GALLERY': False, 'BUILD_WAYLAND': config.get('wayland', False),
+              'BUILD_COMPOSITOR_WAYLAND': config.get('wayland', False)}
+    return [f'-D{key}={"ON" if enabled else "OFF"}' for key, enabled in values.items() if key in declared]
+
+
+def prepare(config, preset='debug'):
+    context = build_context(preset)
+    # This is the only operation that prepares supplied local provider sources.
+    prepare_external(config, context, selected_features(config, preset))
+    external = check_external(config, features=selected_features(config, preset), cmake_options=context,
+                              evidence=ROOT / 'build/deps/external-state.json')
     location = prefix()
-    if not config['dependencies']:
+    if not config.get('dependencies'):
         return
     if os.environ.get('HOLONIGHT_DEPENDENCY_PREFIX'):
         packages(config, location)
         return
-    # Preflight every source before doing any build.
     sources = [(dep, dependency_source(dep)) for dep in config['dependencies']]
     state_path = ROOT / 'build/deps/provider-state.json'
     try:
@@ -77,48 +243,81 @@ def prepare(config):
     except (OSError, ValueError):
         old_state = {}
     state = {}
+    toolchain = toolchain_signature(context)
+    build_type = os.environ.get('HOLONIGHT_PROVIDER_BUILD_TYPE', 'Debug')
+    for dep, source in sources:
+        state[dep['module']] = {**source_signature(source), 'prefix': str(location),
+                               'options': [*provider_options(source / dep.get('cmake_subdirectory', ''), config), *dep.get('options', [])],
+                               'cmake_subdirectory': dep.get('cmake_subdirectory', ''), 'wayland': config.get('wayland', False),
+                               'build_type': build_type, 'toolchain': toolchain, 'external': external}
+    artifacts = location.exists() or any((ROOT / 'build/deps').glob('**/CMakeCache.txt'))
+    if (old_state or artifacts) and old_state != state:
+        # Preserve incompatible artifacts for inspection, but never reuse their caches or install trees.
+        directory = ROOT / 'build/deps'
+        number = 1
+        while (ROOT / f'build/deps.previous-{number}').exists():
+            number += 1
+        directory.rename(ROOT / f'build/deps.previous-{number}')
+        old_state = {}
     revision_lines = []
     for dep, source in sources:
-        git = subprocess.run(['git', '-C', str(source), 'rev-parse', 'HEAD'], capture_output=True, text=True)
-        revision = git.stdout.strip() if git.returncode == 0 else None
-        dirty = subprocess.run(['git', '-C', str(source), 'diff', '--no-ext-diff', 'HEAD'], capture_output=True).stdout if revision else b''
-        if revision:
-            untracked = subprocess.run(['git', '-C', str(source), 'ls-files', '--others', '--exclude-standard', '-z'], capture_output=True, text=True).stdout
-            for name in sorted(p for p in untracked.split('\0') if p):
-                file = source / name
-                if file.is_file() and not set(file.relative_to(source).parts) & {'build', '.cache', '.serena', 'docs'}:
-                    dirty += name.encode() + hashlib.sha256(file.read_bytes()).digest()
-        signature = {'source': str(source), 'revision': revision, 'dirty': hashlib.sha256(dirty).hexdigest(),
-                     'prefix': str(location), 'options': dep.get('options', []), 'wayland': config.get('wayland', False)}
-        revision_lines.append(f'{dep["module"]}\t{source}\t{revision or "unversioned"}')
-        state[dep['module']] = signature
+        signature = state[dep['module']]
+        revision_lines.append(f'{dep["module"]}\t{source}\t{signature["revision"] or "unversioned"}')
         try:
             packages({'dependencies': [dep]}, location)
             installed = True
         except RuntimeError:
             installed = False
-        if revision and installed and old_state.get(dep['module']) == signature:
-            print(f'{dep["module"]}: source revision and installed package are current')
+        if installed and old_state.get(dep['module']) == signature:
+            print(f'{dep["module"]}: compatible source, toolchain and installed package are current')
             continue
         build = ROOT / 'build/deps' / dep['module']
-        args = ['cmake', '-S', source, '-B', build, '-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Debug',
+        args = ['cmake', '-S', source / dep.get('cmake_subdirectory', ''), '-B', build, '-G', 'Ninja', f'-DCMAKE_BUILD_TYPE={build_type}',
                 f'-DCMAKE_INSTALL_PREFIX={location}', '-DCMAKE_INSTALL_LIBDIR=lib',
-                f'-DCMAKE_PREFIX_PATH={location}', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
-                '-DBUILD_TESTS=OFF', '-DBUILD_TESTING=OFF', '-DBUILD_DEMO=OFF', '-DBUILD_CONTROLS_GALLERY=OFF',
-                f'-DBUILD_WAYLAND={"ON" if config.get("wayland") else "OFF"}']
+                f'-DCMAKE_PREFIX_PATH={cmake_prefixes(location)}', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+                *provider_options(source / dep.get('cmake_subdirectory', ''), config)]
+        if os.environ.get('CMAKE_TOOLCHAIN_FILE'):
+            args.append('-DCMAKE_TOOLCHAIN_FILE=' + os.environ['CMAKE_TOOLCHAIN_FILE'])
+        args.extend(f'-D{key}={value}' for key, value in context.items())
         args.extend(dep.get('options', []))
-        run(args)
-        run(['cmake', '--build', build, '--parallel', os.environ.get('JOBS', '2')])
-        run(['cmake', '--install', build])
+        env = discovery_environment(location)
+        run(args, env=env)
+        run(['cmake', '--build', build, '--parallel', os.environ.get('JOBS', '2')], env=env)
+        run(['cmake', '--install', build], env=env)
     packages(config, location)
     atomic_json(state_path, state)
+    atomic_json(ROOT / 'build/deps/external-state.json', external)
     (ROOT / 'build/deps/provider-revisions.tsv').write_text('\n'.join(revision_lines) + '\n')
 
 
 def configure(config, preset):
-    prepare(config)
-    args = ['cmake', '--preset', preset, f'-DCMAKE_PREFIX_PATH={prefix()}',
-            f'-DQML_IMPORT_PATH={prefix() / "lib/qt6/qml"}']
+    packages(config, prefix())
+    features = selected_features(config, preset)
+    external = check_external(config, scopes=('build', 'tool', 'test') if preset == 'test' else ('build', 'tool'),
+                              features=features, cmake_options=build_context(preset))
+    state = {'toolchain': toolchain_signature(build_context(preset)), 'external': external,
+             'providers': {package: {'path': str(path), 'content': hashlib.sha256(
+                 b''.join(file.name.encode() + file.read_bytes() for file in sorted(path.glob('*.cmake')))).hexdigest()}
+                 for package, path in packages(config, prefix()).items()},
+             'prefixes': cmake_prefixes(prefix()),
+             'presets': (ROOT / 'CMakePresets.json').read_text() if (ROOT / 'CMakePresets.json').exists() else None}
+    directory = ROOT / 'build' / preset
+    state_path = directory / 'dependency-state.json'
+    try:
+        previous = json.loads(state_path.read_text())
+    except (OSError, ValueError):
+        previous = None
+    if (directory / 'CMakeCache.txt').exists() and previous != state:
+        number = 1
+        while (ROOT / 'build' / f'{preset}.previous-{number}').exists():
+            number += 1
+        directory.rename(ROOT / 'build' / f'{preset}.previous-{number}')
+    args = ['cmake', '--preset', preset, f'-DCMAKE_PREFIX_PATH={cmake_prefixes(prefix())}']
+    if config.get('dependencies'):
+        args.append(f'-DHOLONIGHT_DEPENDENCY_PREFIX={prefix()}')
+    if config.get('qml'):
+        args.append('-DQML_IMPORT_PATH=' + ';'.join(str(p / 'lib/qt6/qml') for p in (prefix(), external_prefix()) if p))
+    args.extend(f'-D{key}={"ON" if enabled else "OFF"}' for key, enabled in features.items())
     if os.environ.get('QMLLINT'):
         args.append('-DQMLLINT=' + os.environ['QMLLINT'])
     if config.get('module') == 'holonight-qt':
@@ -126,7 +325,11 @@ def configure(config, preset):
             if os.environ.get(tool):
                 args.append(f'-DHOLONIGHT_{tool}_EXECUTABLE=' + os.environ[tool])
     args += [f'-D{package}_DIR={path}' for package, path in packages(config, prefix()).items()]
-    run(args)
+    if external_prefix() and config.get('dependencies'):
+        args.append(f'-DHOLONIGHT_EXTERNAL_PREFIX={external_prefix()}')
+    run(args, env=discovery_environment(prefix()))
+    atomic_json(state_path, state)
+    atomic_json(directory / 'external-state.json', external)
     refresh(config, preset)
 
 
@@ -141,6 +344,13 @@ def refresh(config, preset='test'):
     if config.get('qml'):
         build = (ROOT / 'build' / preset).resolve()
         imports = [build, build / 'qml', configured_prefix(preset) / 'lib/qt6/qml']
+        if external_prefix():
+            imports.append(external_prefix() / 'lib/qt6/qml')
+        cache = build / 'CMakeCache.txt'
+        if cache.exists():
+            match = re.search(r'^QML_IMPORT_PATH:(?:STRING|PATH)=(.*)$', cache.read_text(), re.M)
+            if match:
+                imports.extend(Path(p) for p in match[1].split(';') if p)
         imports += [p.parent for p in build.rglob('qmldir')]
         text = '[General]\nno-cmake-calls=true\nbuildDir=' + str(build) + '\nimportPaths=' + ','.join(map(str, dict.fromkeys(imports))) + '\n'
         local = ROOT / '.cache/tooling/qmlls/.qmlls.ini'
@@ -284,7 +494,7 @@ def main():
             parser.error('--tool is required for qt-tool')
         print(qt_tool(args.tool, args.preset))
     elif command == 'deps':
-        prepare(config)
+        prepare(config, args.preset)
     elif command == 'configure':
         configure(config, args.preset)
     elif command in {'build', 'test'}:

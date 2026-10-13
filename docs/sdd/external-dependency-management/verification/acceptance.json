@@ -1,0 +1,170 @@
+{
+  "verification_date": "2026-10-13",
+  "audit_baseline": "d834984dc413dc9e56f7f3157fa605d6a8667088",
+  "implementation_baseline": "ce9bf6957f6efa51a3f5dbf9f51d95fb9b48cd6f",
+  "ready_checkpoint": "318ce54",
+  "runs": {
+    "build/ci/20261013T102018Z-x17x6m1i": {
+      "report": {
+        "revision": "ce9bf6957f6efa51a3f5dbf9f51d95fb9b48cd6f",
+        "status": " M .github/workflows/build.yml\u0000 M CMakeLists.txt\u0000 M README.md\u0000 M Taskfile.yml\u0000 M docs/sdd/external-dependency-management/SPEC.md\u0000 M docs/sdd/local-ci/README.md\u0000 M fuzz/decode.cpp\u0000 M fuzz/exif.cpp\u0000 M fuzz/metadata.cpp\u0000 M include/holonight_images/image.h\u0000 M include/holonight_images/svg.h\u0000 M scripts/ci/images.json\u0000 M scripts/ci/lane.sh\u0000 M scripts/ci/prepare-tools.py\u0000 M scripts/ci/run.py\u0000 M scripts/ci/test_launcher.py\u0000 M src/device.h\u0000 M src/image.cpp\u0000 M src/metadata.cpp\u0000 M src/svg.cpp\u0000 M tests/exif_fixture.h\u0000 M tests/image_test.cpp\u0000 M tests/package-consumer/main.cpp\u0000 M tests/package-test.cmake\u0000 M tests/svg_test.cpp\u0000 M tests/svg_without_image_plugin_test.cpp\u0000 M tooling/README.md\u0000 M tooling/VERSION\u0000 M tooling/module.json\u0000 M tooling/workflow.py\u0000?? scripts/ci/test_dependencies.py\u0000?? tooling/dependencies.cmake\u0000?? tooling/external-packages.json\u0000?? tooling/external.py\u0000?? tooling/providers.cmake\u0000",
+        "platform": "linux/amd64",
+        "lanes": {
+          "build-test": {
+            "image": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "exit_code": 0
+          },
+          "release": {
+            "image": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "exit_code": 0
+          },
+          "static-checks": {
+            "image": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "exit_code": 0
+          },
+          "licensing": {
+            "image": "docker.io/fsfe/reuse@sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e",
+            "exit_code": 0
+          }
+        },
+        "dirty": true,
+        "runtime": "Docker version 29.9.0, build f415da838b",
+        "preparation_identity": {
+          "images": {
+            "build": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "licensing": "docker.io/fsfe/reuse@sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e"
+          },
+          "platform": "linux/amd64",
+          "inputs": {
+            "tooling/VERSION": "c28fcca53637bc88e124af1725df13cb98c69dedefd62fb3cdbe1cdb6b760624",
+            "tooling/module.json": "4e2cd51dd22a81fa091e8557a948d2ef8be51c1da408e79da0d685ac9f04e182",
+            "tooling/dependencies.cmake": "853f6e856c455657a9bf56fc111c29f68f458d6ecc674dabc8b015698b0c9b61",
+            "tooling/providers.cmake": "5d6e7aae9f7f6874d9fa3cf5efca17cab8c3df88ea3b312633ece6341b592876",
+            "tooling/external.py": "2e87dc012d7cdda7235d5ea2e311a2a49272ff82eac5cf3ccec7841ec610df27",
+            "tooling/workflow.py": "6c9d0a80396e61072509437cd39168caf11ca31c8abd8259f50ce2c55434837e",
+            "tooling/external-packages.json": "fbe02f85a17db3583b02fb48659ccfb54e77b0480f76eb23c4a425353cc350a3",
+            "CMakeLists.txt": "8722670c54bd59b816bcb307b3f56a0c8abe078b3d7abfd48b3f62ceb2cbdb4e",
+            "CMakePresets.json": "adbfd7b48c59e9a3cb063830d09d6546c7f959e2c0752ec22ab3edb4b63c9c64",
+            "scripts/ci/lane.sh": "26cbfa99330097384724c53c986687b0a36136bd6d2e06b98402c26a45425bef",
+            "scripts/ci/run.py": "a883b0a0686071c831de49ccd772e2c7cc9436bbc3e63d87602a24f6c7af9386"
+          }
+        },
+        "untracked_inputs": [
+          "scripts/ci/test_dependencies.py",
+          "tooling/dependencies.cmake",
+          "tooling/external-packages.json",
+          "tooling/external.py",
+          "tooling/providers.cmake"
+        ]
+      },
+      "log_sha256": {
+        "build-test.log": "cc5a12a6d9bbb2bb9a788137a45c4f717079c24af0aed1c825d0e18986255ab9",
+        "release.log": "5154f2f3f4db58b1b3f8eb9d1a6ba0eb4e40234cc86a08da850632c399bba4ae",
+        "static-checks.log": "8b4b8d246745e8d145e5ba5ee7e36cddae35ce4699215d855c1c91b906a45196",
+        "licensing.log": "e06acbd38370400b679358ad9c2c8637e92f3c250ff45b2f02a32c9d46651cec"
+      }
+    },
+    "build/ci/20261013T102409Z-3aqh6u2h": {
+      "report": {
+        "revision": "ce9bf6957f6efa51a3f5dbf9f51d95fb9b48cd6f",
+        "status": " M .github/workflows/build.yml\u0000 M CMakeLists.txt\u0000 M CMakePresets.json\u0000 M README.md\u0000 M Taskfile.yml\u0000 M docs/sdd/external-dependency-management/SPEC.md\u0000 M docs/sdd/local-ci/README.md\u0000 M fuzz/decode.cpp\u0000 M fuzz/exif.cpp\u0000 M fuzz/metadata.cpp\u0000 M include/holonight_images/image.h\u0000 M include/holonight_images/svg.h\u0000 M scripts/ci/images.json\u0000 M scripts/ci/lane.sh\u0000 M scripts/ci/prepare-tools.py\u0000 M scripts/ci/run.py\u0000 M scripts/ci/test_launcher.py\u0000 M src/device.h\u0000 M src/image.cpp\u0000 M src/metadata.cpp\u0000 M src/svg.cpp\u0000 M tests/exif_fixture.h\u0000 M tests/image_test.cpp\u0000 M tests/package-consumer/main.cpp\u0000 M tests/package-test.cmake\u0000 M tests/svg_test.cpp\u0000 M tests/svg_without_image_plugin_test.cpp\u0000 M tooling/README.md\u0000 M tooling/VERSION\u0000 M tooling/module.json\u0000 M tooling/workflow.py\u0000?? scripts/ci/test_dependencies.py\u0000?? tooling/dependencies.cmake\u0000?? tooling/external-packages.json\u0000?? tooling/external.py\u0000?? tooling/providers.cmake\u0000",
+        "platform": "linux/amd64",
+        "lanes": {
+          "release": {
+            "image": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "exit_code": 0
+          },
+          "static-checks": {
+            "image": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "exit_code": 0
+          }
+        },
+        "dirty": true,
+        "runtime": "Docker version 29.9.0, build f415da838b",
+        "preparation_identity": {
+          "images": {
+            "build": "ghcr.io/lebedenko/holonight-deps@sha256:37ca051c39d1688d6413c47d94b8c0f221152dac6981ec67d155f2c43ea17b40",
+            "licensing": "docker.io/fsfe/reuse@sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e"
+          },
+          "platform": "linux/amd64",
+          "inputs": {
+            "tooling/VERSION": "c28fcca53637bc88e124af1725df13cb98c69dedefd62fb3cdbe1cdb6b760624",
+            "tooling/module.json": "4e2cd51dd22a81fa091e8557a948d2ef8be51c1da408e79da0d685ac9f04e182",
+            "tooling/dependencies.cmake": "853f6e856c455657a9bf56fc111c29f68f458d6ecc674dabc8b015698b0c9b61",
+            "tooling/providers.cmake": "5d6e7aae9f7f6874d9fa3cf5efca17cab8c3df88ea3b312633ece6341b592876",
+            "tooling/external.py": "2e87dc012d7cdda7235d5ea2e311a2a49272ff82eac5cf3ccec7841ec610df27",
+            "tooling/workflow.py": "6c9d0a80396e61072509437cd39168caf11ca31c8abd8259f50ce2c55434837e",
+            "tooling/external-packages.json": "fbe02f85a17db3583b02fb48659ccfb54e77b0480f76eb23c4a425353cc350a3",
+            "CMakeLists.txt": "8722670c54bd59b816bcb307b3f56a0c8abe078b3d7abfd48b3f62ceb2cbdb4e",
+            "CMakePresets.json": "35b9f47c5182dda1b971e83227e4697eaf4b4ecde42717cf6d3d50a6101fb662",
+            "scripts/ci/lane.sh": "26cbfa99330097384724c53c986687b0a36136bd6d2e06b98402c26a45425bef",
+            "scripts/ci/run.py": "a883b0a0686071c831de49ccd772e2c7cc9436bbc3e63d87602a24f6c7af9386"
+          }
+        },
+        "untracked_inputs": [
+          "scripts/ci/test_dependencies.py",
+          "tooling/dependencies.cmake",
+          "tooling/external-packages.json",
+          "tooling/external.py",
+          "tooling/providers.cmake"
+        ]
+      },
+      "log_sha256": {
+        "release.log": "b15cc77e7ec9098ee9eb8f3f891b8f458613ace42060f7bc434884e4e1d9fc1d",
+        "static-checks.log": "425dcfc5dfd52cf2ddbe25564d5204115a90cb2c7ceb4a22f702c64a6e4b9c82"
+      }
+    }
+  },
+  "counts": {
+    "launcher": 8,
+    "dependency": 11,
+    "canonical_tooling": 32,
+    "ctest": 3,
+    "provider_cases": 36,
+    "tidy_translation_units": 10,
+    "staged_files": 9
+  },
+  "deferred": [
+    "publication",
+    "umbrella gitlink update",
+    "real Podman execution",
+    "new fuzz campaigns",
+    "Debian qualification",
+    "ecosystem integration"
+  ],
+  "implementation_sha256": {
+    ".github/workflows/build.yml": "6431d2046084b1807916c1bbdd292d0297e163f76a22338bf622be98fee28084",
+    "CMakeLists.txt": "8722670c54bd59b816bcb307b3f56a0c8abe078b3d7abfd48b3f62ceb2cbdb4e",
+    "CMakePresets.json": "35b9f47c5182dda1b971e83227e4697eaf4b4ecde42717cf6d3d50a6101fb662",
+    "Taskfile.yml": "5f5daf5dde7dd65461b3a2dfe2d8343834d9b58ab8644753a891eb50ce409bbc",
+    "fuzz/decode.cpp": "6d7f01874593507c57b2625b55fa9b6372b8a4e9bcf9984d899953f9e598a706",
+    "fuzz/exif.cpp": "2a91aa983ada409a8cc3a888e71c7e5d191159cc384c345a42ec03e3c6536c45",
+    "fuzz/metadata.cpp": "f6a110f988c4dd8f93eb82ddc8be6483430a09ea51e5fb721a8b5a0bef6eda94",
+    "include/holonight_images/image.h": "d2479f04b76d5ae9fa50a5da138c3a9c96178a4bb2744d6c82fe1e277ef2cbb6",
+    "include/holonight_images/svg.h": "6d8302efb4d679a5f9d2a4fa6bd355df602b6b43879965d95675bc223e40b979",
+    "scripts/ci/images.json": "971449c5da542cf20eb134eddf0abbbcdec1ea9f8d1edc517d980b21127aa5a7",
+    "scripts/ci/lane.sh": "26cbfa99330097384724c53c986687b0a36136bd6d2e06b98402c26a45425bef",
+    "scripts/ci/prepare-tools.py": "8a385d1604a3ee25b1e920dac2412301f8e0d1aa13bf66739afcd344bce07c04",
+    "scripts/ci/run.py": "a883b0a0686071c831de49ccd772e2c7cc9436bbc3e63d87602a24f6c7af9386",
+    "scripts/ci/test_dependencies.py": "3fbcce427f43ee388e938913ebab81af132a14e56006700f5b1ddcb45b9a3e09",
+    "scripts/ci/test_launcher.py": "3555dac2ef89c7cfa6efd866735743e81207c4d5d8a8ff56823c64679b7c62ea",
+    "src/device.h": "b81ed115c8f49f98e4dbd3350ed4ad4bc26b5aab43227c882ed96fc3872160eb",
+    "src/image.cpp": "4847e08e8ba19b6ed164112bbb4eaa7ab6f2f90472c21ce13db2a7a0f20a030b",
+    "src/metadata.cpp": "d4b3d25f464048bea1e0d90c617c50c411f382c831b828566938b5874d2a9808",
+    "src/svg.cpp": "73170f83e76e2e3b6ad5ffb788cee39ccb3e7612961461326c010bcc7004f047",
+    "tests/exif_fixture.h": "2eafa61aac1211df8093d399e005c946a14267bf48efee9f905ac818ffad7bb5",
+    "tests/image_test.cpp": "0febb7e09a19379a78f532f8c81e3a7560c25c28088ece2f4e0050f89450b153",
+    "tests/package-consumer/main.cpp": "a979781fbaf5385d4aa698da4257164db5919673987a7ae52eb43d13b6041e1f",
+    "tests/package-test.cmake": "bc83471bbc6b78c0020f4d619f8e7140e41ae0835d24de1876d682043ece25b9",
+    "tests/svg_test.cpp": "d7adae8879280bf2a64ab12a5a90e462d1091ee137bf6eac8a1b5fd37c02142b",
+    "tests/svg_without_image_plugin_test.cpp": "b258d1aa2baf88041f84c1787764620bd810f0e37b4da07cc92ef8177bc048bc",
+    "tooling/VERSION": "c28fcca53637bc88e124af1725df13cb98c69dedefd62fb3cdbe1cdb6b760624",
+    "tooling/dependencies.cmake": "853f6e856c455657a9bf56fc111c29f68f458d6ecc674dabc8b015698b0c9b61",
+    "tooling/external-packages.json": "fbe02f85a17db3583b02fb48659ccfb54e77b0480f76eb23c4a425353cc350a3",
+    "tooling/external.py": "2e87dc012d7cdda7235d5ea2e311a2a49272ff82eac5cf3ccec7841ec610df27",
+    "tooling/module.json": "4e2cd51dd22a81fa091e8557a948d2ef8be51c1da408e79da0d685ac9f04e182",
+    "tooling/providers.cmake": "5d6e7aae9f7f6874d9fa3cf5efca17cab8c3df88ea3b312633ece6341b592876",
+    "tooling/workflow.py": "6c9d0a80396e61072509437cd39168caf11ca31c8abd8259f50ce2c55434837e"
+  },
+  "dependency_regressions_sha256": "759fbc87b903a06f0e4a40fc4ce57a7d6c363e8a82bcb2a034f30f608f194de9"
+}
