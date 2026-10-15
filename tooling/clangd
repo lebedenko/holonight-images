@@ -1,3 +1,0 @@
-CompileFlags:
-  CompilationDatabase: .
-  Remove: [-mno-direct-extern-access, -fno-keep-inline-dllexport]

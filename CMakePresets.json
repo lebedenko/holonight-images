@@ -2,28 +2,14 @@
   "version": 5,
   "configurePresets": [
     {
-      "name": "debug",
+      "name": "dev",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/debug",
+      "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_INSTALL_PREFIX": "/usr",
         "CMAKE_INSTALL_LIBDIR": "lib",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/build/deps/prefix",
-        "BUILD_TESTING": "OFF"
-      }
-    },
-    {
-      "name": "test",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/test",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_INSTALL_PREFIX": "/usr",
-        "CMAKE_INSTALL_LIBDIR": "lib",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/build/deps/prefix",
         "BUILD_TESTING": "ON"
       }
     },
@@ -36,19 +22,14 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_INSTALL_PREFIX": "/usr",
         "CMAKE_INSTALL_LIBDIR": "lib",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/build/deps/prefix",
         "BUILD_TESTING": "OFF"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "debug",
-      "configurePreset": "debug"
-    },
-    {
-      "name": "test",
-      "configurePreset": "test"
+      "name": "dev",
+      "configurePreset": "dev"
     },
     {
       "name": "release",
@@ -57,8 +38,8 @@
   ],
   "testPresets": [
     {
-      "name": "test",
-      "configurePreset": "test",
+      "name": "dev",
+      "configurePreset": "dev",
       "output": {
         "outputOnFailure": true
       },

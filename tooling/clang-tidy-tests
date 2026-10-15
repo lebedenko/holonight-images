@@ -1,2 +1,0 @@
-InheritParentConfig: true
-Checks: '-readability-identifier-naming,-cppcoreguidelines-avoid-non-const-global-variables'

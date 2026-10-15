@@ -1,0 +1,23 @@
+name: Acceptance
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/ci/container.py integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance
+          path: |
+            build/acceptance/*/*.log
+            build/acceptance/*/source/build/**/Testing/Temporary/*
+            build/acceptance/*/output/**/*.log
+            build/acceptance/*/output/**/*.maps
+            build/acceptance/*/output/**/*.jsonl
+            build/acceptance/*/output/**/*.json
+            build/acceptance/*/output/**/*.png
+            build/acceptance/*/source/build/**/uqc-launch-logs/*
+            build/acceptance/*/source/build/previews/**
+            build/runtime-fixtures.*/*.log

@@ -1,87 +1,49 @@
 version: '3'
+vars:
+  PRESET: '{{default "dev" .PRESET}}'
 tasks:
-  ci:
-    desc: Rehearse all push validation in isolated containers
-    cmds:
-    - python3 scripts/ci/run.py
-  ci:prepare:
-    desc: Acquire qualified CI images and record installed prerequisites explicitly
-    cmds:
-    - python3 scripts/ci/run.py --prepare
-  tooling:doctor:
-    desc: doctor using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py doctor
-  tooling:refresh:
-    desc: refresh using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py refresh --preset {{default "test" .EDITOR_PRESET}}
-  serena:serve:
-    desc: Start independent Serena server in codex context
-    cmds:
-    - serena start-mcp-server --project "{{.TASKFILE_DIR}}" --context codex
-  serena:index:
-    desc: Explicitly index this module
-    cmds:
-    - serena project index "{{.TASKFILE_DIR}}"
-  deps:
-    desc: Validate installed external prerequisites (no internal providers)
-    cmds:
-    - python3 tooling/workflow.py deps --preset {{.PRESET}}
-  configure:
-    desc: configure using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py configure --preset {{.PRESET}}
-  build:
-    desc: build using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py build --preset {{.PRESET}}
-  test:
-    desc: test using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py test --preset {{.PRESET}}
-  configure-tests:
-    desc: configure using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py configure --preset test
-  configure:release:
-    desc: configure using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py configure --preset release
-  build:release:
-    desc: build using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py build --preset release
-  format:
-    desc: format using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py format
-  format-check:
-    desc: format-check using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py format-check
-  tidy:
-    desc: tidy using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py tidy --scope all
-  tidy-src:
-    desc: tidy using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py tidy --scope src
-  tidy-tests:
-    desc: tidy using standalone tooling
-    cmds:
-    - python3 tooling/workflow.py tidy --scope tests
-  lint:
-    desc: Run applicable static checks
-    cmds:
-    - task: tidy
   check:
-    desc: Run build, tests and static checks
+    desc: Authoritative container acceptance
+    cmds:
+    - python3 scripts/ci/container.py check {{.CLI_ARGS}}
+  configure:
+    desc: configure
+    cmds:
+    - cmake --preset {{.PRESET}} {{.CLI_ARGS}}
+  build:
+    desc: build
+    cmds:
+    - cmake --preset {{.PRESET}}
+    - cmake --build --preset {{.PRESET}}
+  test:
+    desc: test
     cmds:
     - task: build
-    - task: test
-    - task: format-check
-    - task: lint
-vars:
-  PRESET: '{{default "debug" .PRESET}}'
+      vars:
+        PRESET: dev
+    - ctest --preset dev {{.CLI_ARGS}}
+  configure:release:
+    desc: configure:release
+    cmds:
+    - cmake --preset release {{.CLI_ARGS}}
+  build:release:
+    desc: build:release
+    cmds:
+    - cmake --preset release
+    - cmake --build --preset release
+  format:
+    desc: Format with the pinned container tools
+    cmds:
+    - python3 scripts/ci/container.py format
+  format-check:
+    desc: format-check
+    cmds:
+    - python3 scripts/quality.py format-check
+  tidy:
+    desc: tidy
+    cmds:
+    - python3 scripts/quality.py tidy --build build/{{.PRESET}}
+  check:integration:
+    desc: Container acceptance plus Release staging and runtime checks
+    cmds:
+    - python3 scripts/ci/container.py integration {{.CLI_ARGS}}

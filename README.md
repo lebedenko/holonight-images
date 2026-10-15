@@ -1,5 +1,7 @@
 # HoloNight Images
 
+For current build, test, container acceptance and provider workflows, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 Synchronous Qt raster/SVG inspection, bounded decoding/rasterization and structured EXIF facts for HoloNight applications.
 Extracted from HoloNight Viewer and Files under GPL-3.0-or-later.
 
@@ -124,53 +126,3 @@ Qt treats image-element fragment hrefs as filenames rather than document-local r
 Data URIs must use the lowercase `data:` scheme and contain a decodable raster, preventing Qt's ordinary failed-data
 filename fallback. Fragment references in use/paint resources remain allowed. Embedded decode is subject to Qt's
 allocation ceiling and renderer resource checks, not the caller's final output-image budget.
-
-## Standalone developer tooling
-
-See [tooling/README.md](tooling/README.md) for presets, local dependency overrides, editor refresh,
-`task tooling:doctor`, and the independent Serena project.
-
-## Local CI rehearsal
-
-Run explicit preparation once before acceptance:
-
-```sh
-task deps PRESET=test  # Validate installed prerequisites; Images has no internal providers.
-task configure PRESET=test
-task build PRESET=test
-task test
-task ci:prepare       # Acquire the qualified full Arch and pinned REUSE images.
-task ci               # Clean acceptance, with no pulls or network access.
-```
-
-Configure/build/test validate dependencies without acquisition. Install missing prerequisites yourself,
-or set `HOLONIGHT_EXTERNAL_PREFIX` to an existing installation (paths with spaces are supported).
-Direct CMake users can supply `CMAKE_PREFIX_PATH` or `HOLONIGHT_EXTERNAL_PREFIX`.
-Canonical tooling archives incompatible caches as `build/<preset>.previous-N`.
-
-CI requires Git, Python 3 and an accessible Docker daemon; rootless Podman is used when Docker is absent.
-The fixed linux/amd64 images require an amd64 host or emulation. Registry access is needed only during
-`task ci:prepare`. Images uses the qualified full EDM-024 Arch environment, with installed libexif,
-libwebp and Qt image handlers. `scripts/ci/packages.json` retains historical supplemental package
-identities; supplemental downloads/extraction are retired.
-
-Preparation records image identities, toolchain, resolved prerequisites and the complete package inventory
-in ignored `build/ci-prepared/`. Acceptance rejects missing, changed or incompatible preparation before
-starting any lane. Run preparation explicitly again after changes to declarations, toolchain inputs or
-CI scripts; old incompatible evidence is archived as `ci-prepared.previous-N`.
-
-The four lanes are `build-test`, `release`, `static-checks` and `licensing`.
-Provider tests retain their Release configuration and all three CTest registrations. Release stages the
-installed package and runs a separate consumer from an external prefix containing spaces. Static checks
-run canonical formatting and strict tidy across production, tests, installed consumer and optional fuzz
-translation units. The Clang fuzz harnesses are also built as a compatibility smoke check; this does not
-repeat fuzz campaigns or supersede the retained historical sanitizer findings.
-
-Acceptance uses `--pull=never --network=none`, read-only source/preparation snapshots, caller UID/GID,
-rootless Podman mapping and private runtime directories. Parallelism defaults to two (`JOBS` overrides).
-Tracked edits and non-ignored new files are included, with untracked inputs reported. Development builds
-are untouched. Complete logs, dirty state, identities and artifacts go to ignored `build/ci/`.
-Use `python3 scripts/ci/run.py --lane build-test` for a focused lane. Required failures return nonzero;
-other requested lanes still run. Run regressions with `python3 scripts/ci/test_launcher.py` and
-`python3 scripts/ci/test_dependencies.py` in the qualified environment. Publication and umbrella pins
-remain separate handoffs.
