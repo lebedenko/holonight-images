@@ -65,7 +65,7 @@ def main():
                     config = ROOT / '.clang-tidy'
                 commands.append(('clang-tidy', '--quiet', path, '-p', database.parent, f'--config-file={config}', f'--header-filter={header_filter}', '--warnings-as-errors=*'))
             covered |= files
-        with ThreadPoolExecutor(max_workers=int(os.environ.get('JOBS', '2'))) as pool:
+        with ThreadPoolExecutor(max_workers=int((os.environ.get('JOBS') or subprocess.check_output(['nproc'], text=True).strip()))) as pool:
             list(pool.map(lambda command: run(*command), commands))
         if not covered:
             raise RuntimeError('No owned sources were checked by clang-tidy')

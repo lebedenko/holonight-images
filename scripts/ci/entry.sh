@@ -3,7 +3,9 @@
 set -euo pipefail
 export HOME=/work/home XDG_RUNTIME_DIR=/work/runtime LC_ALL=C.UTF-8 TZ=UTC
 export XDG_CONFIG_HOME=/work/config XDG_DATA_HOME=/work/data XDG_CACHE_HOME=/work/cache
-export CC=clang CXX=clang++ CMAKE_BUILD_PARALLEL_LEVEL=${JOBS:-2}
+export JOBS=${JOBS:-$(nproc)}
+export CC=clang CXX=clang++ CMAKE_BUILD_PARALLEL_LEVEL=$JOBS
+printf 'Parallel jobs: %s\n' "$JOBS"
 export QT_QPA_PLATFORM=offscreen QSG_RHI_BACKEND=software QT_QUICK_BACKEND=software
 export QT_QPA_PLATFORMTHEME= QT_STYLE_OVERRIDE=
 # This fresh, offline container exposes only the selected sources and disposable prefix.

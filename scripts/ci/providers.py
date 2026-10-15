@@ -22,7 +22,7 @@ for provider in json.loads((root / 'scripts/ci/providers.json').read_text()):
          f'-DHOLONIGHT_DEPENDENCY_PREFIX={prefix}',
          '-DBUILD_TESTING=OFF', '-DBUILD_TESTS=OFF', '-DBUILD_DEMO=OFF',
          '-DBUILD_CONTROLS_GALLERY=OFF', '-DBUILD_QT5_PROBES=OFF', *provider.get('options', [])],
-        ['cmake', '--build', build, '--parallel', os.environ.get('JOBS', '2')],
+        ['cmake', '--build', build, '--parallel', (os.environ.get('JOBS') or subprocess.check_output(['nproc'], text=True).strip())],
         ['cmake', '--install', build],
     ]
     for command in commands:

@@ -6,6 +6,6 @@ mkdir -p /work/output
     cmake --install build/release --prefix '/work/external prefix'
     cmake -S tests/package-consumer -B '/work/consumer build' -G Ninja \
       '-DCMAKE_PREFIX_PATH=/work/external prefix'
-    cmake --build '/work/consumer build' --parallel "${JOBS:-2}"
+    cmake --build '/work/consumer build' --parallel "${JOBS:-$(nproc)}"
     '/work/consumer build/consumer'
     cp -a /work/package /work/output/

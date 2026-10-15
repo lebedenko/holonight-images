@@ -122,7 +122,7 @@ def main():
                '--mount', f'type=bind,src={work / "passwd"},dst=/etc/passwd,readonly',
                '--mount', f'type=bind,src={work / "group"},dst=/etc/group,readonly',
                '--workdir', '/work/source', '--env', f'HOLONIGHT_CI_IMAGE={image}',
-               '--env', f'JOBS={os.environ.get("JOBS", "2")}',
+               '--env', f'JOBS={os.environ.get("JOBS", "")}',
                '--entrypoint', 'bash', image, 'scripts/ci/entry.sh', args.mode]
     with (work / 'acceptance.log').open('w') as log:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

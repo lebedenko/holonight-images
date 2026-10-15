@@ -11,7 +11,10 @@ builds, build, tests, format, static analysis, applicable QML checks and REUSE.
 `task check:integration` adds Release staging and project runtime checks. GitHub invokes
 the same launcher with `integration`; no additional validation is hidden in the workflow.
 The only host launcher prerequisites are Python 3, Git, tar and Docker, plus Task for aliases.
-Image and tool versions appear in the acceptance log. Logs and fresh builds stay under
+Builds and clang-tidy use all available CPUs by default (`nproc` inside the container).
+Set `JOBS=4 task check` to override the job count. Native component builds use Ninja
+defaults; use `CMAKE_BUILD_PARALLEL_LEVEL=4 task build` to limit those.
+Image, tool versions and the selected job count appear in the acceptance log. Logs and fresh builds stay under
 ignored `build/acceptance/`; downloaded sources are reused under `build/sources/`.
 
 Standalone checks automatically acquire the exact sources in `scripts/ci/providers.json`.
