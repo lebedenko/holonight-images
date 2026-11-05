@@ -1,0 +1,15 @@
+[package]
+name = "comparison-glycin-bridge"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+glycin = "=3.1.0"
+gio = "=0.22.10"
+glib = "=0.22.10"
+futures-lite = "=2.6.1"
+serde_json = "=1.0.145"
