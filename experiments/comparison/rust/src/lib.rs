@@ -99,7 +99,14 @@ pub unsafe extern "C" fn comparison_load(
         if s.bytes.len() > 1024 * 1024 {
             return Err("metadata limit".into());
         }
-        s.json = json!({"outcome":"loaded", "oriented_width":details.width(), "oriented_height":details.height(),
+        let orientation = image.transformation_orientation() as u16;
+        let (mut stored_width, mut stored_height) = (details.width(), details.height());
+        if !ignore && orientation >= 5 {
+            std::mem::swap(&mut stored_width, &mut stored_height);
+        }
+        s.json = json!({"source_width":stored_width, "source_height":stored_height,
+                        "orientation":orientation, "orientation_policy":if ignore { "Ignore" } else { "Apply" },
+                        "outcome":"loaded", "oriented_width":details.width(), "oriented_height":details.height(),
                         "exif_bytes":s.bytes.len(), "metadata":details.metadata_key_value(),
                         "protocol":glycin::COMPAT_VERSION, "sandbox":format!("{:?}", image.active_sandbox_mechanism())})
             .to_string().into_bytes();

@@ -1,5 +1,77 @@
 # Glycin feasibility and compatibility decision
 
+## Orientation, geometry and intrinsic GIF facts, 2026-11-06
+
+**Both candidates remain experimental; no production backend is selected.** This
+reassessment supersedes only the stored/display geometry and intrinsic loop-fact
+gaps recorded below. It does not qualify complete animation playback.
+
+The private session captures Apply (default) or Ignore with the owned snapshot;
+restart retains both and explicitly conflicting requests fail. Qt's transformation
+flags normalize to EXIF 1–8. Pinned Glycin 3.1.0 supplies its public effective
+orientation; stored dimensions reverse its reported swap only when transformations
+were enabled. No additional EXIF interpretation or decoder session supplies geometry.
+Orientation stays in each backend; common output conversion does not rotate again.
+
+`experiments/comparison/geometry.py` generates an asymmetric grayscale 24×16 JPEG
+with six distinct 8×8 blocks using host `cjpeg`, quality 100. It injects all eight
+orientations with both TIFF byte orders and retains an untagged control. Explicit
+Python coordinate mappings supply every expected native RGBA pixel, independently
+of decoder agreement. RGB tolerance is 2; alpha must equal 255. Every fixture runs
+under Apply and Ignore, with repeated inspect/decode/restart, native output, a 12×12
+shrinking bound and a 64×64 no-upscale bound. Resampling algorithms are not compared.
+
+| Demonstrated fixture behavior | Direct provider | Isolated Qt | Isolated Glycin |
+| --- | --- | --- | --- |
+| Untagged + orientations 1–8, both byte orders, both policies | passed 34/34 | passed 34/34 | passed 34/34 |
+| Linear Display-P3 RGBA conversion/premultiplication, both policies | passed 2/2 | passed 2/2 | passed 2/2 |
+| Ten two-frame GIF fixtures: intrinsic facts, every pixel, 30/70 ms delays, clean exhaustion, restart | passed 10/10 | passed 10/10 | passed 10/10 |
+| Nine malformed/ambiguous/budget GIF scans, decoding observed separately | passed 9/9 | passed 9/9 | passed 9/9 |
+
+The ten valid GIFs are written as explicit GIF blocks and literal LZW streams,
+independently of Qt encoding: absent declaration; NETSCAPE2.0 and ANIMEXTS1.0 each
+with values 0, 1, 2 and 65,535; identical repeated declarations with an unrelated
+comment extension and local color tables. Two known black/white full frames and
+known delays establish content. No declaration means one total play, zero means
+infinite, and positive values mean that many repeats after the initial play.
+
+**An additional parser is required for the Glycin candidate:** private C++
+`gif-facts.h` scans captured bytes inside the existing outer sandbox, with no Qt GIF
+decoding or new dependency. It validates header/screen/table/block structure and
+termination through the trailer without decompressing image data. Limits are
+256 MiB input, 65,536 blocks/subblocks and 1 MiB extension payload. Truncated header,
+screen/global/local tables, subblock payload, missing trailer, conflicting recognized
+declarations and both traversal budgets produce unavailable facts with explicit
+reasons and null normalized values. Decoder success is independent: Qt, for example,
+still decodes missing-trailer, conflicting and over-budget fixtures. Identical
+repeated declarations are accepted. This bounded scanner is supplemental provenance,
+not a native Glycin fact or complete GIF validation.
+
+Qt's native loop_count is retained separately. **Failed native coverage:** Qt
+reports zero repeats for all four ANIMEXTS1.0 fixtures, including the infinite and
+positive-repeat cases; its native fact does not recognize that identifier. The
+supplemental fact passes these fixtures in all three controls. Glycin still exposes
+no native intrinsic loop declaration. Neither manual restart, end-of-frames nor
+`loop_animation(false)` is evidence of an intrinsic declaration.
+
+Native Release Cargo/CMake builds passed. Focused checks passed 165/165; existing
+color checks passed 96/96; existing experimental checks passed 31/31; provider
+`task test` passed 3/3 including installed-package. A restricted launch failed
+explicitly at user systemd bus access, then authorized host runs used unchanged
+15-second deadlines, 2 GiB process-tree ceilings, layout validation and sandboxes.
+The initial private Qt normalization mistake (5/7 interchanged) is corrected and
+its failed report retained; tolerances and production decoding were unchanged.
+Ignored `build/comparison/geometry.json` and `geometry/` hold raw responses, fixture
+and binary hashes, diagnostics, expected/actual/difference pixels and facts. Reports
+are preserved by content hash before replacement. Existing performance evidence is
+reused; its hashes describe previous binaries and no benchmarks were rerun.
+
+**Unproven:** disposal, complete playback scheduling, long-run retention, active
+decoder cancellation, broader geometry/container combinations, acquisition and
+production deployment. Passing these fixtures closes only the demonstrated geometry
+and supplemental loop-fact gaps. Production APIs, dependencies, consumers, installer
+rules and repository pins remain unchanged.
+
 ## Focused color reassessment, 2026-11-06
 
 **No production migration is selected. The malformed-profile blocker is removed

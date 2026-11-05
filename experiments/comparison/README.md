@@ -23,6 +23,7 @@ cmake -S experiments/comparison -B build/comparison -G Ninja \
 cmake --build build/comparison
 
 python3 experiments/comparison/run.py build/comparison --smoke --warmups 0 --samples 1
+python3 experiments/comparison/geometry.py build/comparison
 python3 experiments/comparison/color.py build/comparison
 python3 experiments/comparison/check.py build/comparison
 python3 experiments/comparison/run.py build/comparison
@@ -86,3 +87,32 @@ validate references inside isolation, reject symlinks and unsafe forms, and rend
 only `/capsule/main.svg`. The check replaces the original main and resources after
 capture. This proves a fixture mechanism, not safe acquisition of arbitrary resource
 trees. Production acquisition, identity/race policy and packaging remain prerequisites.
+
+`geometry.py` generates JPEGs using native `cjpeg -quality 100` and injected
+little/big-endian TIFF tags, plus GIFs using explicit blocks and literal LZW codes.
+It checks all native pixels against independent coordinate mappings (RGB tolerance
+2, alpha exact), dimensions at native/shrinking/no-upscale bounds, captured policy,
+repeated inspection, restart, known GIF frames/delays/end and intrinsic loop facts.
+`geometry.json` and `geometry/` retain raw responses, hashes, diagnostics, expected,
+actual and difference RGBA files; previous reports are copied by content hash.
+
+Private inspection/decode facts use `source_width/height` for stored geometry,
+`oriented_width/height` for policy-dependent display geometry, `orientation` for the
+effective EXIF value 1–8 and `orientation_policy` for Apply/Ignore. Load defaults to
+Apply; restart retains the captured bytes and policy. An explicit conflicting policy
+fails. Pixel orientation remains in the backend; common Qt output processing only
+converts color and premultiplies. Glycin's public effective orientation API supplies
+the inverse geometry calculation without a second EXIF parse or decoder session.
+
+The additional private `gif-facts.h` parser runs over captured bytes inside the
+outer helper sandbox, without decompression, Qt GIF decoding or added dependencies.
+It reports `intrinsic_loop` with supplemental provenance, scan status, raw repeat
+declaration, normalized total plays and infinite state. A complete scan without a
+declaration means one play; zero means infinite; positive values mean repeats after
+the initial play. Unavailable facts have null counts/state and an explicit reason.
+Traversal requires a trailer and is limited to 256 MiB input, 65,536 blocks/subblocks
+and 1 MiB extension payload. Identical declarations are accepted; conflicting ones
+are unavailable. The private `gif-scan` operation exposes this fact independently of
+loader failure. Qt's native `loop_count` remains separate: in these fixtures it
+recognizes NETSCAPE2.0 but ignores ANIMEXTS1.0. Neither intrinsic fact describes
+`loop_animation(false)`, frame exhaustion or manual restart.

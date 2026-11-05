@@ -14,6 +14,8 @@
 #include <QXmlStreamReader>
 #include <QtEndian>
 
+#include "gif-facts.h"
+
 #include <atomic>
 #include <cstdio>
 #include <holonight_images/image.h>
@@ -142,6 +144,9 @@ int main(int argc, char** argv) {
   QByteArray snapshot;
   QBuffer buffer(&snapshot);
   std::unique_ptr<QImageReader> gif;
+  bool ignoreOrientation = false;
+  QJsonObject inspection;
+  QJsonObject loopFact;
   int frames = 0;
   int count = 0;
   QJsonObject request;
@@ -151,10 +156,23 @@ int main(int argc, char** argv) {
   if (!session) return 3;
 #endif
   while (receive(request, payload)) {
-    const auto operation = request.value("op").toString();
+    auto operation = request.value("op").toString();
     if (operation == "close") {
       send({{"outcome", "closed"}});
       return 0;
+    }
+    if (operation != "load" && request.contains("ignore_orientation") &&
+        request.value("ignore_orientation").toBool() != ignoreOrientation) {
+      send({{"outcome", "orientation-policy-conflict"}});
+      continue;
+    }
+    if (operation == "load") {
+      ignoreOrientation = request.value("ignore_orientation").toBool();
+      loopFact = gifLoopFact(payload);
+    }
+    if (operation == "gif-scan") {
+      send({{"outcome", "scanned"}, {"intrinsic_loop", loopFact}});
+      continue;
     }
 #ifdef WITH_GLYCIN
     if (operation == "load" || operation == "restart") {
@@ -171,7 +189,7 @@ int main(int argc, char** argv) {
       }
       comparison_load(session.get(), reinterpret_cast<const unsigned char*>(snapshot.constData()),
                       size_t(snapshot.size()), request.value("capsule").toBool(),
-                      request.value("ignore_orientation").toBool());
+                      ignoreOrientation);
       auto control = bridgeControl(session.get());
       size_t length = 0;
       const auto* exif = comparison_result(session.get(), &length, true);
@@ -183,7 +201,13 @@ int main(int argc, char** argv) {
         metadata.facts = HolonightImages::parseExif(raw);
         control["exif"] = facts(metadata);
       }
+      control["intrinsic_loop"] = loopFact;
+      inspection = control;
       send(control);
+      continue;
+    }
+    if (operation == "inspect") {
+      send(inspection);
       continue;
     }
     if (operation == "decode" || operation == "svg" || operation == "frame") {
@@ -220,6 +244,9 @@ int main(int argc, char** argv) {
             image = image.scaled(bound, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         }
       }
+      for (const auto* key : {"source_width", "source_height", "oriented_width", "oriented_height",
+                              "orientation", "orientation_policy", "intrinsic_loop"})
+        control[key] = inspection.value(key);
       send(control, image);
       continue;
     }
@@ -231,7 +258,7 @@ int main(int argc, char** argv) {
       buffer.close();
       snapshot = std::move(payload);
       buffer.open(QIODevice::ReadOnly);
-      send({{"outcome", "loaded"}});
+      send({{"outcome", "loaded"}, {"intrinsic_loop", loopFact}});
       continue;
     }
     if (!buffer.isOpen()) {
@@ -243,6 +270,7 @@ int main(int argc, char** argv) {
       send({{"outcome", "invalid-bound"}});
       continue;
     }
+    if (operation == "restart" && !snapshot.startsWith("GIF")) operation = "inspect";
     if (operation == "gif-open" || operation == "restart") {
       gif.reset();
       buffer.seek(0);
@@ -251,7 +279,8 @@ int main(int argc, char** argv) {
       count = gif->imageCount();
       send({{"outcome", gif->canRead() ? "success" : "damaged"},
             {"frame_count", count},
-            {"loop_count", gif->loopCount()}});
+            {"loop_count", gif->loopCount()},
+            {"intrinsic_loop", loopFact}});
     } else if (operation == "frame" && gif) {
       auto image = gif->read();
       const int delay = gif->nextImageDelay();
@@ -292,8 +321,8 @@ int main(int argc, char** argv) {
            result.image);
     } else if (operation == "decode" || operation == "inspect" || operation == "metadata") {
       gif.reset();
-      const auto orientation = request.value("ignore_orientation").toBool() ? HolonightImages::OrientationPolicy::Ignore
-                                                                            : HolonightImages::OrientationPolicy::Apply;
+      const auto orientation = ignoreOrientation ? HolonightImages::OrientationPolicy::Ignore
+                                                 : HolonightImages::OrientationPolicy::Apply;
       if (operation == "metadata") {
         send({{"outcome", "metadata"}, {"metadata", facts(HolonightImages::readMetadata(buffer, limits, cancelled))}});
         continue;
@@ -306,6 +335,11 @@ int main(int argc, char** argv) {
                          {"oriented_width", inspection.orientedSize.width()},
                          {"oriented_height", inspection.orientedSize.height()},
                          {"metadata", facts(inspection.metadata)}};
+      // Qt transformations are bit flags, not EXIF values.
+      constexpr int exifOrientation[] = {1, 2, 4, 3, 6, 7, 5, 8};
+      result["orientation"] = exifOrientation[int(inspection.orientation) & 7];
+      result["orientation_policy"] = ignoreOrientation ? "Ignore" : "Apply";
+      result["intrinsic_loop"] = loopFact;
       QImage image;
       if (operation == "decode") {
         auto decoded = HolonightImages::decode(buffer, {limits, bound, orientation}, cancelled);
