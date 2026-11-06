@@ -12,6 +12,9 @@ CAPSULE = ['same-directory', 'descendant', 'traversal', 'absolute', 'file-url', 
 
 
 def scenarios(suite, options):
+    if suite == 'gif-attribution':
+        from gif_attribution import expectations
+        return expectations()[0]
     if suite == 'cancellation':
         return CANCELLATION + ([] if options['focused'] else [
             f'{backend}-{loaded}-{phase}-{n}' for backend in ('qt', 'glycin')
@@ -39,6 +42,9 @@ def scenarios(suite, options):
 
 
 def requirements(suite, options):
+    if suite == 'gif-attribution':
+        from gif_attribution import expectations
+        return expectations()[1]
     output = {}
     for name in scenarios(suite, options):
         count, artifacts = 1, []

@@ -24,7 +24,10 @@ palette makes Qt pass. The provider wrapper returns identical frame pixels/delay
 The matching [Qt 6.12.0 GIF source](https://github.com/qt/qtbase/blob/v6.12.0/src/plugins/imageformats/gif/qgifhandler.cpp)
 restores via `color(bgcol)` and selects the active local table in `color()`.
 This supports a decoder attribution for the controlled opaque-background case.
-Installed distribution patches have not been audited; no patched rebuild was tested.
+The five distribution patches have now been audited and do not modify the GIF source.
+However, the recipe source-archive checksum does not match the archive generated
+from the referenced tag; exact package-source identity remains unresolved. No patched
+rebuild was tested. This remains a provisional source explanation.
 The [GIF89a specification](https://giflib.sourceforge.net/gifstandard/GIF89a.html)
 defines the logical background index in the global table.
 
@@ -49,7 +52,74 @@ return of the first frame after the last; it sends false on every request here.
 That text does not explicitly promise persistent end responses after an error.
 Consequently an upstream persistent-exhaustion contract violation remains unproven.
 
-The matching installed loader/image-rs dependency source was not available locally;
-remote source retrieval did not succeed. Attribution between Glycin client, loader
-and image-rs remains incomplete. These are observed public-API failures, not a claim
-that a specific upstream layer or source line has been demonstrated faulty.
+The matching installed loader source is now available. The Glycin 2.2.6 Git archive
+matches the distribution recipe's BLAKE2 checksum, and the recipe SHA256 matches
+package `.BUILDINFO`. Its loader lock selects `image` **0.25.10** and `gif` **0.14.2**;
+this is separate from the comparison client's locked graph. The image crate archive
+matches the loader lock's checksum.
+
+The loader selects `GifDecoder::new` in `glycin-image-rs/src/lib.rs:297`, forwards
+`into_frames()` at line 551, and copies `frame.into_buffer().into_raw()` in
+`animated.rs:116–130`. The image GIF iterator explicitly ignores the logical
+background for web compatibility (`image/src/codecs/gif.rs:252`) and clears disposal-2
+regions to transparent. A scratch host-native reproducer uses that exact image version,
+its loader-declared image features, and public composited `into_frames()` API.
+All six fresh global/local disposal-2 probes agree with the loader's pixels and delays.
+This locates the opaque-background policy in the decoder's compositing API rather than
+the C++ bridge. It does not establish that image-rs considers its web-compatibility
+policy a bug.
+
+Exhaustion is separate: `animated.rs` recreates the iterator and sets `looped = true`;
+`lib.rs:217–221` rejects only looped frame zero without storing an exhausted state.
+The exact 3.1.0 client source commit is
+`215113448d88270d45ae9a095eb14a983a765650`; its API implementation matches the published
+crate. Its tests request one end response, as do the installed loader's tests.
+Neither the documented option nor those tests establish repeated stable exhaustion.
+The application's stable-exhaustion requirement remains unmet; an upstream API
+contract violation remains unproven.
+
+
+## Private attribution evidence, 2026-11-06
+
+This milestone is **blocked, not completed attribution or backend qualification**.
+The version-2 suite declares 79 scenarios: four gates, 69 raw/wrapper pairs, and six
+direct-decoder probes. The retained runtime campaign is
+`build/comparison/gif-attribution-f_nkyxfe/report.json`: 77 comparison/oracle/build
+scenarios validate, all 144 worker scopes terminate within the existing cleanup budget
+(maximum recorded cleanup 0.316 s), and 33 scenarios retain failed candidate findings.
+All 69 raw/wrapper comparisons agree. Its 2,961 regular artifacts include the source
+references, responses, expected/actual/difference bytes, structured/raw traces, bundle
+identity and scope proofs. Independent structural validation is retained in
+`build/comparison/gif-attribution-independent-validation.json`.
+
+Two source gates fail. Canonical archives generated using makepkg's Git checksum
+method produce these SHA256 values:
+
+| Source | Recipe checksum | Observed checksum |
+| --- | --- | --- |
+| qtbase v6.12.0 | `d97ef157dc50bdf0425337e9adede8135ab508a4ab2f1abae7e9cfc42c5f86db` | `f24f106cee5f49a1e0778ec84301467640f6fdbbbcdf61e77623c119ab966208` |
+| qtimageformats v6.12.0 | `30226a5944388a918e925127d8f90486d36027567a6cb058ae52b40cab86c64b` | `ab1bc592becd53b7d236936836e70482adf7fa3d2382b67786284ed3544e88de` |
+
+Recipe files match package build metadata; installed GIF plugin and loader bytes match
+the cached packages. The GIF plugin belongs to qt6-base, not qt6-imageformats. Tags,
+patches and source references are retained, but the archive discrepancy is unexplained.
+No newer source was substituted. Retrieval commands use 120-second bounds; local
+caches, matching packaging revisions, their upstream tags and archive endpoints were
+checked. Snapshot endpoints returned HTTP 400; exact Git tags were fetched instead.
+The initial sandbox DNS failure was retried with authorized network access.
+
+A fresh fail-closed invocation is retained in
+`build/comparison/gif-attribution-final-blocked/report.json`; source failure leaves the
+native-build and 75 runtime scenarios explicitly not run. The earlier completed
+runtime evidence is reused because source/report validation did not change its inputs.
+An initial report validator name-shadowing error was corrected and reopening passed
+before the stronger checksum audit invalidated attribution. Earlier interrupted and
+sandbox-rejected runs are diagnostic history, not qualifying evidence.
+
+Unchanged `animation.py --skip-retention` independently exits **1**: **16 passed,
+8 failed**, in `build/comparison/animation-20261106-230716-f26328b8`. The first attempt
+found a stale default runtime manifest; that bundle was preserved as
+`runtime-bundle-before-gif-attribution` and a fresh bundle prepared before this result.
+Existing runtime, codec, retention and performance evidence is reused. No latch,
+compositor correction, production dependency, lockfile or backend selection changes.
+Reports remain local and have not been submitted.

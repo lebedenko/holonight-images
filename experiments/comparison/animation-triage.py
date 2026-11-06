@@ -11,6 +11,7 @@ import time
 import uuid
 from animation import PALETTE, LOCAL, encode, reference, patch, fixtures
 from harness import Worker
+from runtime_evidence import require
 
 
 def validate(data, w, h, frames, repeat):
@@ -19,7 +20,7 @@ def validate(data, w, h, frames, repeat):
     def take(n):
         nonlocal pos
         value = data[pos:pos+n]
-        assert len(value) == n
+        require(len(value) == n, 'truncated GIF fixture')
         pos += n
         return value
     def blocks():
@@ -29,45 +30,45 @@ def validate(data, w, h, frames, repeat):
             if not n:
                 return result
             result += take(n)
-    assert take(6) == b'GIF89a'
-    assert struct.unpack('<HHBBB', take(7)) == (w,h,129,0,0)
-    assert take(12) == bytes(v for c in PALETTE for v in c)
+    require(take(6) == b'GIF89a', 'invalid GIF signature')
+    require(struct.unpack('<HHBBB', take(7)) == (w,h,129,0,0), 'logical screen mismatch')
+    require(take(12) == bytes(v for c in PALETTE for v in c), 'global palette mismatch')
     declaration = None
     count = 0
     while True:
         marker = take(1)
         if marker == b';':
             break
-        assert marker == b'!'
+        require(marker == b'!', 'unexpected GIF block')
         kind = take(1)
         if kind == b'\xff':
-            assert take(1) == b'\x0b' and take(11) == b'NETSCAPE2.0'
+            require(take(1) == b'\x0b' and take(11) == b'NETSCAPE2.0', 'application identifier mismatch')
             payload = blocks()
-            assert len(payload) == 3 and payload[0] == 1
+            require(len(payload) == 3 and payload[0] == 1, 'loop declaration payload mismatch')
             declaration = int.from_bytes(payload[1:], 'little')
             continue
-        assert kind == b'\xf9' and take(1) == b'\x04'
+        require(kind == b'\xf9' and take(1) == b'\x04', 'graphic control extension mismatch')
         flags, delay, transparent = struct.unpack('<BHB', take(4))
-        assert take(1) == b'\0' and take(1) == b','
+        require(take(1) == b'\0' and take(1) == b',', 'image block terminator mismatch')
         x,y,fw,fh,packed = struct.unpack('<HHHHB', take(9))
         f = frames[count]
-        assert 0 <= x < w and 0 <= y < h and 0 < fw <= w-x and 0 < fh <= h-y
-        assert (x,y,fw,fh) == tuple(f[k] for k in ('x','y','w','h'))
-        assert flags == f['disposal']*4 + (f['transparent'] is not None)
-        assert delay == (3,7,11)[count%3] and transparent == (f['transparent'] or 0)
-        assert packed == (129 if f['local'] else 0)
+        require(0 <= x < w and 0 <= y < h and 0 < fw <= w-x and 0 < fh <= h-y, 'frame rectangle out of bounds')
+        require((x,y,fw,fh) == tuple(f[k] for k in ('x','y','w','h')), 'frame geometry mismatch')
+        require(flags == f['disposal']*4 + (f['transparent'] is not None), 'disposal or transparency flag mismatch')
+        require(delay == (3,7,11)[count%3] and transparent == (f['transparent'] or 0), 'delay or transparency index mismatch')
+        require(packed == (129 if f['local'] else 0), 'local palette flag mismatch')
         if packed:
-            assert take(12) == bytes(v for c in LOCAL for v in c)
-        assert take(1) == b'\x02'
+            require(take(12) == bytes(v for c in LOCAL for v in c), 'local palette mismatch')
+        require(take(1) == b'\x02', 'LZW minimum code size mismatch')
         compressed = blocks()
         bits = ''.join(f'{b:08b}'[::-1] for b in compressed)
         codes = [int(bits[i:i+3][::-1],2) for i in range(0,len(bits)-2,3)]
         end = 2*fw*fh
-        assert codes[end] == 5 and all(c == 4 for c in codes[:end:2])
-        assert codes[1:end:2] == f['indices']
-        assert set(bits[(end+1)*3:]) <= {'0'}
+        require(codes[end] == 5 and all(c == 4 for c in codes[:end:2]), 'clear/end codes mismatch')
+        require(codes[1:end:2] == f['indices'], 'decoded fixture indices mismatch')
+        require(set(bits[(end+1)*3:]) <= {'0'}, 'nonzero LZW padding')
         count += 1
-    assert pos == len(data) and count == len(frames) and declaration == repeat
+    require(pos == len(data) and count == len(frames) and declaration == repeat, 'trailer, frame count or loop declaration mismatch')
 
 
 def self_checks():
@@ -76,10 +77,10 @@ def self_checks():
     base = dict(patch(0,0,2,1), indices=[1,2])
     rgba = lambda a,b: bytes((*PALETTE[a],255,*PALETTE[b],255))
     for disposal, expected in ((1,rgba(3,1)),(2,rgba(0,1)),(3,rgba(1,1))):
-        assert list(reference(2,1,[base,solid(0,3,disposal),solid(1,1)]))[-1] == expected
-    assert list(reference(2,1,[base,solid(0,0,transparent=0)]))[-1] == rgba(1,2)
-    assert list(reference(2,1,[base,solid(0,3,3),solid(1,3,3),solid(0,2)]))[-1] == rgba(2,2)
-    assert list(reference(2,1,[base,dict(solid(0,3),local=True)]))[-1] == bytes((*LOCAL[3],255,*PALETTE[2],255))
+        require(list(reference(2,1,[base,solid(0,3,disposal),solid(1,1)]))[-1] == expected, 'hand-calculated disposal canvas mismatch')
+    require(list(reference(2,1,[base,solid(0,0,transparent=0)]))[-1] == rgba(1,2), 'hand-calculated transparency canvas mismatch')
+    require(list(reference(2,1,[base,solid(0,3,3),solid(1,3,3),solid(0,2)]))[-1] == rgba(2,2), 'hand-calculated consecutive disposal canvas mismatch')
+    require(list(reference(2,1,[base,dict(solid(0,3),local=True)]))[-1] == bytes((*LOCAL[3],255,*PALETTE[2],255)), 'hand-calculated local palette canvas mismatch')
     for name, fs in fixtures().items():
         for repeat in (None,0,2):
             validate(encode(12,8,fs,repeat),12,8,fs,repeat)
@@ -89,7 +90,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('build',type=Path)
     parser.add_argument('--self-check',action='store_true')
+    parser.add_argument('--attribution',action='store_true')
+    parser.add_argument('--evidence-dir',type=Path)
     args = parser.parse_args()
+    if args.attribution:
+        from gif_attribution import execute
+        return execute(args)
+    if args.evidence_dir is not None:
+        parser.error('--evidence-dir requires --attribution')
     build = args.build.resolve()
     root = build / ('animation-triage-'+time.strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:8])
     root.mkdir(parents=True)
@@ -121,10 +129,10 @@ def main():
             worker = Worker(build/binary,runtime_bundle=build/'runtime-bundle',glycin='glycin' in binary)
             def load(op):
                 r,_ = request(op,**({'payload':data} if op=='load' else {}))
-                assert r['outcome'] == ('success' if binary == 'qt-worker' and op == 'restart' else 'loaded'),r
+                require(r['outcome'] == ('success' if binary == 'qt-worker' and op == 'restart' else 'loaded'), r)
                 if binary == 'qt-worker':
                     r,_ = request('gif-open')
-                    assert r['outcome'] == 'success',r
+                    require(r['outcome'] == 'success', r)
             load('load')
             for cycle in range(3 if exhaust else 1):
                 if cycle:

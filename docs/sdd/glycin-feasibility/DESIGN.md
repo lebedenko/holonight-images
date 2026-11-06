@@ -848,3 +848,42 @@ Final checks pass: native acquisition CTest **2/2**, pinned formatting of new C+
 fixtures, changed-C++ format checks, Python compilation and whitespace checks in both
 repositories. The native socket fixture requires execution outside the agent sandbox;
 its successful outside-sandbox run is the qualifying CTest result.
+
+
+## GIF attribution source audit, 2026-11-06
+
+The [GIF report draft](../../../experiments/comparison/GIF-UPSTREAM-REPORT-DRAFT.md)
+and [fixed attribution command](../../../experiments/comparison/README.md#fixed-gif-attribution)
+retain a private version-2 diagnostic with 79 declared scenarios. The full runtime
+campaign retains 69 equivalent raw/wrapper pairs, six direct decoder probes and all
+144 terminal scope proofs (maximum cleanup 0.316 s), with 33 failed candidate findings.
+Independent evidence validation covers 77 comparison/oracle/build scenarios and 2,961
+regular artifacts. The two provenance gates remain failed: canonical Qt tag archive
+checksums do not match the exact distribution recipes. A fresh fail-closed invocation
+lists dependent scenarios as not run. This is a **blocked attribution milestone**.
+
+Exact Glycin 2.2.6 sources do match the distribution Git archive checksum. Its locked
+image 0.25.10 / gif 0.14.2 graph differs from the Rust 3.1.0 client graph. The decoder's
+public composited-frame API reproduces global/local disposal-2 pixels in all six probes;
+matching loader source forwards those buffers. The decoder deliberately ignores the
+logical background for web compatibility. Loader source explains intermittent end
+responses, but exact client documentation/tests do not establish a persistent-end
+promise. Application qualification remains failed independently of upstream ownership.
+Qt GIF source offers a provisional local-palette explanation; archive identity remains
+unresolved despite matching package metadata, plugin ownership/bytes and patch audit.
+
+Unchanged GIF acceptance with `--skip-retention` exits 1 (16 passed, 8 failed), retained
+in `build/comparison/animation-20261106-230716-f26328b8`. Runtime, codec, retention and
+performance evidence above is reused; shared launch/report behavior is unchanged.
+Provider `task test` passes 3/3 including installed consumption. Seven focused helper
+regressions and all 53 runtime helper tests pass normally and under Python optimization;
+Python compilation passes. Host `task format-check` fails on the unchanged
+`experiments/comparison/gif-facts.h`; no unrelated formatting is applied.
+
+Full runtime evidence is `build/comparison/gif-attribution-f_nkyxfe/report.json`, with
+independent structural validation in `build/comparison/gif-attribution-independent-validation.json`.
+The fresh blocked invocation is `build/comparison/gif-attribution-final-blocked/report.json`.
+The native runtime inputs were reused after report/source-only validation changes;
+no repeated scope campaign was needed. No production API, candidate behavior, dependency,
+tracked lockfile, installer, umbrella pin or backend selection changed. Reports remain
+local; submission requires separate authorization.

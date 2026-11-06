@@ -312,6 +312,52 @@ on end normalize to zero and end delays are excluded. All raw fields remain reco
 Failures and incomplete probes return nonzero. `--skip-retention` preserves existing
 compositing checks while reusing prior retention evidence; default acceptance is unchanged.
 
+## Fixed GIF attribution
+
+```sh
+python3 experiments/comparison/gif-attribution-tests.py
+python3 -O experiments/comparison/gif-attribution-tests.py
+python3 experiments/comparison/animation-triage.py build/comparison --attribution \
+  --evidence-dir build/comparison/gif-attribution-new
+python3 experiments/comparison/gif_attribution.py build/comparison/gif-attribution-new
+```
+
+Attribution declares 79 required version-2 scenarios before execution and uses fixed
+reduced fixtures without greedy reduction. Diagnostic completion can exit zero while
+retaining failed candidate qualifications. Missing provenance, disagreement, incomplete
+artifacts, or incomplete scope cleanup exits nonzero. Default triage reduction and
+GIF acceptance retain their failure exits. The evidence destination must be new.
+The last command independently reopens a completed report; it rejects failed reports.
+
+This is a local source-prepared diagnostic. Exact distribution recipes, all applied
+patches, Qt tag checkouts, the Glycin 2.2.6 archive and Git checkout, the client source
+commit archive and image 0.25.10 crate/extraction reside in ignored `build/gif-sources/`.
+`gif_provenance.py` defines required names and validates identities against installed
+packages, build metadata, recipe checksums and the loader lock. Download commands must
+use `curl --max-time 120` or `timeout 120 git ...`; fetch the recipe's revision/tag and
+referenced sources, never a newer substitute. Missing files produce a failed report.
+The scratch `build/gif-decoder/` contains the direct public image-rs composited-frame
+probe source, manifest, lock and native build. It implements the same bounded protocol
+as the raw API reproducers, using `GifDecoder::new(Cursor(snapshot)).into_frames()`;
+its image version/features and GIF dependency identities are checked against the loader.
+The workspace loader lock includes optional dependencies for other formats; the probe
+records those separately rather than equating the entire workspace graph with its GIF
+path. Sources/builds stay in scratch; evidence retains regular copies of upstream audit
+inputs and hashes of the direct probe's source, manifest, lock and executable.
+
+The driver rebuilds native workers/reproducers, explicitly registers both raw APIs and
+the direct decoder in a fresh runtime bundle, and records every response and trace.
+A complete run requires 69 paired scenarios (138 scopes) plus six decoder scopes.
+Frame comparisons preserve outcomes, dimensions, delays and pixel hashes, rejecting
+error outcomes; only absent/zero end dimensions and end delays are normalized. Full
+raw responses remain available. Qualification is independently recomputed from retained
+pixels and responses during reopening. No production decoder behavior is corrected.
+
+The [local report draft](GIF-UPSTREAM-REPORT-DRAFT.md) records the current **blocked**
+result: exact Qt recipe source-archive checksum mismatch. The complete runtime campaign
+retains all 144 cleanup proofs and candidate failures; a fresh attribution command
+stops at the source gate. This is not completed attribution or backend qualification.
+
 ## Bounded caller-device acquisition
 
 ```sh
