@@ -6,11 +6,11 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPainter>
 #include <QSvgRenderer>
-#include <QUrl>
 #include <QXmlStreamReader>
 #include <QtEndian>
 
@@ -100,40 +100,61 @@ QJsonObject facts(const HolonightImages::MetadataResult& metadata) {
   number("altitude_meters", f.altitudeMeters);
   return o;
 }
-bool capsuleAllowed(const QByteArray& bytes, const std::atomic_bool& cancelled) {
-  auto inspection = HolonightImages::inspectSvg(bytes, cancelled);
-  if (inspection.outcome == HolonightImages::Outcome::Success) return true;
-  if (inspection.resourceReason != HolonightImages::SvgResourceReason::LocalImageReference) return false;
+// Discovery and completed-capsule validation share the provider policy and extraction.
+bool svgResources(const QByteArray& bytes, const std::atomic_bool& cancelled, QJsonArray& paths) {
+  if (bytes.size() > 10 * 1024 * 1024 || cancelled.load()) return false;
+  const auto inspection = HolonightImages::inspectSvg(bytes, cancelled);
+  if (inspection.outcome != HolonightImages::Outcome::Success &&
+      inspection.resourceReason != HolonightImages::SvgResourceReason::LocalImageReference)
+    return false;
   QXmlStreamReader xml(bytes);
-  int resources = 0;
   while (!xml.atEnd()) {
     xml.readNext();
+    if (cancelled.load()) return false;
     if (xml.tokenType() == QXmlStreamReader::DTD || xml.tokenType() == QXmlStreamReader::EntityReference) return false;
     if (!xml.isStartElement()) continue;
     for (const auto& attribute : xml.attributes()) {
       if (attribute.name() == QLatin1String("base")) return false;
-      if (attribute.name() != QLatin1String("href")) continue;
-      const auto reference = attribute.value().toString();
-      const auto kind = HolonightImages::classifySvgReference(reference);
+      if (attribute.name() != QLatin1String("href") && attribute.name() != QLatin1String("src")) continue;
+      const auto path = attribute.value().toString();
+      const auto kind = HolonightImages::classifySvgReference(path);
       if (kind == HolonightImages::SvgReferenceKind::Fragment ||
           kind == HolonightImages::SvgReferenceKind::EmbeddedRaster)
         continue;
-      if (kind != HolonightImages::SvgReferenceKind::LocalFile || ++resources > 256) return false;
-      const QString path = QUrl::fromPercentEncoding(reference.toUtf8());
-      if (QDir::isAbsolutePath(path) || path.contains('\\') || path.contains('?') || path.contains('#')) return false;
-      QString current = "/capsule";
+      if (xml.name() != QLatin1String("image") || kind != HolonightImages::SvgReferenceKind::LocalFile ||
+          paths.size() >= 256 || path.toUtf8().size() > 1024 || path != path.trimmed() || QDir::isAbsolutePath(path) ||
+          path.contains('%') || path.contains('\\') || path.contains('?') || path.contains('#') || path.contains(':') ||
+          path.contains(QChar(0)))
+        return false;
       for (const auto& part : path.split('/')) {
         if (part.isEmpty() || part == "." || part == "..") return false;
-        current += '/' + part;
-        if (QFileInfo(current).isSymLink()) return false;
       }
-      QFile file(current);
-      if (!file.open(QIODevice::ReadOnly)) return false;
-      const auto info = HolonightImages::inspect(file, limits, cancelled);
-      if (info.outcome != HolonightImages::Outcome::Success) return false;
+      paths.append(path);
     }
   }
-  return !xml.hasError();
+  return !xml.hasError() && QJsonDocument(QJsonObject{{"paths", paths}}).toJson(QJsonDocument::Compact).size() <= 65000;
+}
+bool capsuleAllowed(const QByteArray& bytes, const std::atomic_bool& cancelled) {
+  QJsonArray paths;
+  if (!svgResources(bytes, cancelled, paths)) return false;
+  for (const auto& entry : paths) {
+    const auto path = entry.toString();
+    QString current = "/capsule";
+    for (const auto& part : path.split('/')) {
+      current += '/' + part;
+      if (QFileInfo(current).isSymLink()) return false;
+    }
+    QFile file(current);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    const auto info = HolonightImages::inspect(file, limits, cancelled);
+    if (info.outcome != HolonightImages::Outcome::Success ||
+        !QList<QByteArray>{"png", "jpeg", "bmp", "tiff", "webp", "gif"}.contains(info.format))
+      return false;
+    file.seek(0);
+    QImageReader reader(&file);
+    if (reader.supportsAnimation()) return false;
+  }
+  return true;
 }
 }  // namespace
 
@@ -169,6 +190,14 @@ int main(int argc, char** argv) {
     if (operation == "load") {
       ignoreOrientation = request.value("ignore_orientation").toBool();
       loopFact = gifLoopFact(payload);
+    }
+    if (operation == "svg-resources") {
+      QJsonArray paths;
+      if (svgResources(payload, cancelled, paths))
+        send({{"outcome", "resources"}, {"paths", paths}});
+      else
+        send({{"outcome", "resource-rejected"}});
+      continue;
     }
     if (operation == "gif-scan") {
       send({{"outcome", "scanned"}, {"intrinsic_loop", loopFact}});

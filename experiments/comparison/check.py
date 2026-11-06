@@ -86,6 +86,7 @@ def main():
         finally:
             worker.close()
         assert worker.process.poll() is not None
+        assert worker.scope_empty, "scope cleanup unverified"
         if worker.cgroup and worker.cgroup.exists():
             assert not (worker.cgroup / "cgroup.procs").read_text().strip(), "orphan processes"
         return "explicit failure; scope empty or removed"

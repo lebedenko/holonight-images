@@ -67,8 +67,9 @@ diagnostics may be unavailable; assumed-sRGB fallback retains an uncertainty not
 
 Each process tree is launched in a private systemd scope with `MemoryMax=2G` and
 `MemorySwapMax=0`; no manager or memory support means explicit launch failure.
-Each IPC request has a 15-second deadline. Abort sends TERM, allows one second,
-then kills the scope and reaps the launcher. The Rust session ABI is serialized;
+Each IPC request has a 15-second deadline. Terminal cleanup has one five-second
+budget: scope TERM, at most one second of grace, scope KILL if needed, launcher reaping
+and verified hierarchical cgroup cleanup. The Rust session ABI is serialized;
 its cancellation entry is not a thread-safe active-decoder interrupt. No sandbox
 failure starts a direct-provider fallback.
 
@@ -86,8 +87,8 @@ The scoped launcher seals memfds and supplies bubblewrap's `--ro-bind-data`; the
 resulting read-only files have no live source-directory backing. Both candidates
 validate references inside isolation, reject symlinks and unsafe forms, and render
 only `/capsule/main.svg`. The check replaces the original main and resources after
-capture. This proves a fixture mechanism, not safe acquisition of arbitrary resource
-trees. Production acquisition, identity/race policy and packaging remain prerequisites.
+capture. This historical fixture mechanism remains available. The descriptor acquisition path below
+adds bounded acquisition of a narrower subset; production integration and packaging remain prerequisites.
 
 `geometry.py` generates JPEGs using native `cjpeg -quality 100` and injected
 little/big-endian TIFF tags, plus GIFs using explicit blocks and literal LZW codes.
@@ -159,3 +160,161 @@ comparison checks outcomes, frame dimensions, delays and pixels; absent dimensio
 on end normalize to zero and end delays are excluded. All raw fields remain recorded.
 Failures and incomplete probes return nonzero. `--skip-retention` preserves existing
 compositing checks while reusing prior retention evidence; default acceptance is unchanged.
+
+## Bounded caller-device acquisition
+
+```sh
+cmake --build build/comparison --target capture-tests capture-probe
+ctest --test-dir build/comparison --output-on-failure
+python3 experiments/comparison/capture.py build/comparison
+```
+
+The private `source-capture.h` API accepts a caller-owned open, readable, seekable
+`QIODevice&`, an explicit positive byte limit (at most 256 MiB) and atomic cancellation.
+It seeks to zero, requests chunks of at most 64 KiB and counts actual bytes without
+trusting size or EOF hints. A one-byte probe at the limit detects excess input without
+retaining it. Ownership/open state remain with the caller; final position is unspecified.
+Zero-byte reads mean EOF for these synchronous devices. Empty input succeeds, while
+changes observed during reading become part of the capture; no atomic snapshot is claimed.
+Failures return no partial payload: IO/device failures are `IoFailure`, invalid limits
+and overflow `ResourceLimit`, observed cooperative cancellation `Cancelled`. Checks
+surround seek/read and precede success; they cannot interrupt blocking device operations.
+
+`capture-probe PATH BYTE_LIMIT` opens the file in its caller, invokes capture and emits
+raw bytes on stdout only after success, with stderr diagnostics and nonzero failure exit.
+`capture.py` passes those bytes through unchanged isolated worker IPC after replacing or
+removing the original. It checks inspection equality and independent expected PNG,
+orientation-6 JPEG and self-contained SVG pixels for both candidates. Every run creates
+a unique ignored `build/comparison/capture-*/` directory containing reports, captures,
+expected/actual pixels, hashes and scope cleanup. Failed or incomplete checks exit 1.
+The final recorded run passes 16/16 checks; all twelve worker scopes close cleanly.
+The [design](../../docs/sdd/glycin-feasibility/DESIGN.md) records evidence and limits.
+
+The historical Python adapter and evidence remain available. The linked-resource milestone
+below adds a private filesystem identity policy. Blocking-read interruption, active-decoder
+cancellation and production migration remain deferred; neither backend is selected or qualified.
+
+## Bounded isolated-request cancellation
+
+```sh
+python3 experiments/comparison/cancellation.py build/comparison --focused
+python3 experiments/comparison/cancellation.py build/comparison
+```
+
+`Worker.request(..., cancel_event=threading.Event())` accepts caller cancellation.
+Requests, close and teardown are serialized; another thread only sets the event.
+Checkpoints surround nonblocking transfers, control/layout validation and final result
+delivery. Observed cancellation discards the reply and makes the session terminal.
+`RequestCancelled` is raised only after successful cleanup; `CleanupError` retains
+cancellation and cleanup details when proof fails. Further requests fail locally;
+recovery requires an explicitly constructed worker. Events set after a returned result
+have no effect on that completed request. The existing 15-second operation limit and
+any earlier workload deadline remain.
+
+All terminal paths share one idempotent five-second monotonic cleanup budget, measured
+from cancellation observation when applicable. Cleanup resolves the unique scope even
+before sampling, sends scope TERM, grants at most one second of grace, then uses scope
+KILL if needed and reaps the launcher. Manager commands and waits use the remaining
+budget. Success requires a removed cgroup or `cgroup.events` with `populated=0`, which
+includes descendant cgroups. Missing identity/proof, manager failures and exhausted
+budgets fail explicitly. There is no sampled-PID fallback. A scope disappearing during
+signalling is accepted only with independent empty/removed cgroup proof. Closing a
+cancelled session releases descriptors and artifacts without IPC or another deadline;
+stderr remains available.
+
+The focused runner uses bounded event barriers, transport hooks and stderr peer
+acknowledgements for pre-transfer, blocked input, response waiting, partial control and
+pixel records, EOF/malformed/timeout races, failed manager/deadline boundaries, repeated
+cleanup and terminal reuse. The TERM-resistant descendant check deliberately omits
+bubblewrap so PID-namespace teardown cannot mask the required scope KILL. Candidate
+checks use a deterministic PNG captured by the C++ probe, cancel at acknowledged
+request dispatch and immediately before delivery, and repeat each cold/loaded-session
+case three times per backend. Each cancellation has an independent fresh-worker pixel
+recovery and verified scope cleanup. Dispatch proves an outstanding request, not codec
+entry; cooperative decoder interruption remains unproven. Glycin's exclusive-access
+cancellation ABI is never invoked concurrently.
+
+Every run writes a unique ignored `build/comparison/cancellation-*/report.json` with
+binary/fixture hashes, phase acknowledgements, observation/return/cleanup timestamps,
+exceptions, manager diagnostics, launcher status and cgroup proof. Missing scenarios,
+unavailable isolation and failed cleanup return nonzero. Both candidates remain
+experimental; preserved GIF failures and deferred production/resource-acquisition
+policies are unchanged.
+
+The recorded full run `build/comparison/cancellation-1bh6wat8/report.json` passes
+35/35 checks and verifies all 59 original/recovery scopes. The longest successful
+observation-to-cleanup interval is 1.019 seconds; the hostile descendant records scope
+KILL and launcher status -9. Capture rerun `build/comparison/capture-9ksnx411/report.json`
+passes 16/16, capture CTest passes 1/1, protocol fault checks pass 5/5 and provider
+`task test` passes 3/3 including the installed-package consumer. Python compilation,
+changed-peer formatting and whitespace checks pass. Repository-wide `task format-check`
+still reports existing violations in unchanged `gif-facts.h` and `qt-worker.cpp`.
+
+
+## Bounded linked SVG acquisition
+
+```sh
+cmake --build build/comparison --target linked-probe linked-tests qt-worker glycin-worker
+python3 experiments/comparison/linked-check.py build/comparison --focused
+python3 experiments/comparison/linked-check.py build/comparison
+```
+
+`linked.acquire` is a private caller adapter accepting caller-owned open base-directory
+and main-file descriptors plus the main name relative to that directory. `linked-probe`
+duplicates the descriptors with close-on-exec and retains them through discovery and
+publication. It captures the main through `Comparison::capture` with the existing 10 MiB
+SVG ceiling. Its initial length/bytes output is for isolated discovery only, not a published
+capsule. The caller sends those bytes to `svg-resources` in a fresh Qt worker with no source
+mounts or inherited source descriptors. Discovery and completed-capsule validation share
+an extractor derived from `capsuleAllowed` and the provider resource policy. The parent has
+no XML parser or image inspection/decoding step.
+
+Only plain relative local raster image paths in the base or descendants are acquired.
+Valid embedded raster and document-local paint/use fragments retain provider semantics.
+External URLs, percent encoding, absolute paths, empty/dot/traversal components, backslashes,
+queries, linked fragments, xml:base, entities, external CSS and animated reference attributes
+fail. Both candidates inspect resource bytes inside isolation and reject nested SVG,
+invalid raster and animation-capable linked raster formats. No application inspection occurs.
+
+The parent independently validates the untrusted manifest, then deduplicates names. The
+probe repeats validation: at most 256 reference occurrences/unique resources, 1,024 UTF-8
+bytes per name, 65,536-byte control records and 256 MiB aggregate captured input including
+main. File/directory staging collisions and reserved `main.svg` references fail. Linux
+`openat2` uses `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV` with close-on-exec
+and nonblocking flags; only opened regular files are accepted. Unsupported syscall support
+fails with no pathname fallback. No original resource tree is enumerated or bound.
+
+Each acquired descriptor's device/inode, mode, size, nanosecond mtime and ctime must match
+before/after capture. Before publication every name is reopened under the pinned base and
+compared again; the still-open main descriptor and main name are checked too. Observed
+mutation, deletion or replacement fails without retry or partial capsule publication.
+Renaming/replacing the base pathname leaves the pinned original base authoritative.
+This detects observed changes, not an atomic multi-file snapshot: writes between observations
+or changes that restore all observed metadata may escape detection. Caller descriptor ownership
+is retained; shared file positions may change. Cancellation is cooperative around capture,
+transfers and final publication; blocking reads and codec instructions are not cooperatively
+interruptible. The adapter's diagnostic barriers are bounded by its 30-second acquisition
+budget. A completed byte map is mounted through sealed memfds, mutually exclusive with the
+historical `Worker(capsule=...)` fixture-directory input, and both candidates revalidate it.
+
+Every check invocation creates a unique ignored `build/comparison/linked-*/` directory.
+Reports retain input/binary hashes, nanosecond resource identities, deterministic barrier
+acknowledgements, outcomes, independently expected/actual pixels, discovery/render traces and
+scope cleanup proof. Positive same-directory, descendant and repeated-reference scenarios
+replace/remove originals, then run both candidates three times in fresh workers. Missing
+prerequisites, scenarios, trace or hierarchical scope-cleanup proof yield nonzero exit.
+Focused checks precede candidates; existing capture/cancellation, protocol/capsule and provider
+installed-package regressions remain required. Color, geometry, GIF, retention and performance
+evidence is reused. Neither backend is selected; existing GIF failures remain preserved.
+
+Recorded host verification: `build/comparison/linked-ptqiedit/report.json` passes 36/36,
+with all 81 discovery/render scopes verified empty/removed and all 42 positive renders
+matching exact expected RGBA (including embedded-raster/document-local-use preservation).
+`linked-9yemymri` passes 3/3 focused checks, including strace-injected openat2 ENOSYS;
+standalone acquisition/capture CTest passes 2/2. The sequence and logs are in
+`build/comparison/linked-verification-ymtj_elb/`: protocol 5/5, historical capsules 16/16,
+and provider `task test` 3/3 including installed-package consumer. Capture evidence
+`capture-3wv_kfzy` passes 16/16; cancellation `cancellation-r53b_6q9` passes 35/35.
+Both worker binary hashes still match those capture/cancellation runs. New C++ files
+and changed worker ranges pass clang-format; changed Python compiles and whitespace checks
+pass. Full ecosystem/container acceptance and unchanged codec evidence were not repeated.
