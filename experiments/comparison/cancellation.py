@@ -13,6 +13,9 @@ import time
 from unittest.mock import patch
 
 from color import encode
+from runtime_evidence import guarded_main, Invocation, destination, require
+from runtime_suites import scenarios, requirements
+
 from harness import CleanupError, RequestCancelled, Worker
 
 
@@ -24,17 +27,28 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('build', type=Path)
     parser.add_argument('--focused', action='store_true', help='hostile peers only')
+    parser.add_argument('--evidence-dir', type=Path)
+    parser.add_argument('--runtime-bundle', type=Path)
     args = parser.parse_args()
     build = args.build.resolve()
-    root = Path(tempfile.mkdtemp(prefix='cancellation-', dir=build))
+    root = destination(args, build, 'cancellation-')
+    options = dict(focused=args.focused)
+    options.update(build=str(build), runtime_bundle=str((args.runtime_bundle or build / 'runtime-bundle').resolve()),
+                   evidence_dir=str(root))
+    invocation = Invocation(root, 'cancellation', options, scenarios('cancellation', options), requirements('cancellation', options))
+    invocation.runtime_bundle = args.runtime_bundle
     results = []
     report = dict(results=results, limitation='Dispatch proves an outstanding request, not codec entry; '
                   'cooperative decoder interruption remains unproven.')
 
     def run(name, mode=None, phase='dispatched', ack=None, backend=None, loaded=False,
             payload=b'', timeout=False, failure=None):
-        record = dict(name=name, markers=[])
+        record = dict(name=name, markers=[], input_bytes=len(payload),
+                      input_sha256=hashlib.sha256(payload).hexdigest())
+        if payload:
+            (root / (name + '.input')).write_bytes(payload)
         results.append(record)
+        invocation.scenario(name)
         event = threading.Event()
         reached = threading.Event()
         controller = None
@@ -78,9 +92,9 @@ def main():
                     raise AssertionError('scope startup unavailable')
                 event.wait(.005)
             if backend:
-                assert worker.request('load', fixture)['outcome'] == 'loaded'
+                require(worker.request('load', fixture)['outcome'] == 'loaded', "acceptance check failed: worker.request('load', fixture)['outcome'] == 'loaded'")
                 if loaded:
-                    assert worker.request('decode', width=2, height=1)['bytes'] == 8
+                    require(worker.request('decode', width=2, height=1)['bytes'] == 8, "acceptance check failed: worker.request('decode', width=2, height=1)['bytes'] == 8")
             def cancel_from_caller():
                 if reached.wait(4):
                     event.set()
@@ -108,23 +122,23 @@ def main():
             except (RequestCancelled, CleanupError) as error:
                 record.update(exception=type(error).__name__, detail=str(error),
                               request_returned=time.monotonic())
-                assert isinstance(error, CleanupError) == bool(failure), str(error)
+                require(isinstance(error, CleanupError) == bool(failure), str(error))
             else:
                 raise AssertionError('cancelled request returned a result')
-            assert event.is_set(), 'cancellation phase missing'
+            require(event.is_set(), 'cancellation phase missing')
             if not failure:
-                assert worker.scope_empty and worker.process.poll() is not None
-                assert worker.cleanup['completed'] - worker.cancel_observed <= 5
+                require(worker.scope_empty and worker.process.poll() is not None, 'acceptance check failed: worker.scope_empty and worker.process.poll() is not None')
+                require(worker.cleanup['completed'] - worker.cancel_observed <= 5, "acceptance check failed: worker.cleanup['completed'] - worker.cancel_observed <= 5")
                 if mode == 'cancel-descendant':
-                    assert any('--signal=KILL' in entry['arguments']
-                               for entry in worker.cleanup['manager']), 'scope KILL not exercised'
+                    require(any('--signal=KILL' in entry['arguments']
+                               for entry in worker.cleanup['manager']), 'scope KILL not exercised')
                 before = dict(worker.cleanup)
                 worker.abort()
-                assert worker.cleanup == before, 'repeated teardown changed evidence'
+                require(worker.cleanup == before, 'repeated teardown changed evidence')
             try:
                 worker.request('load')
             except RuntimeError as error:
-                assert 'terminal worker' in str(error)
+                require('terminal worker' in str(error), "acceptance check failed: 'terminal worker' in str(error)")
             else:
                 raise AssertionError('terminal worker reused')
             if failure:
@@ -135,7 +149,7 @@ def main():
                     pass
                 else:
                     raise AssertionError('failed cleanup retry was accepted')
-                assert worker.cleanup == before
+                require(worker.cleanup == before, 'acceptance check failed: worker.cleanup == before')
             record['status'] = 'passed'
         except Exception as error:
             record.update(status='failed', error=repr(error))
@@ -158,7 +172,7 @@ def main():
                         record.update(status='failed', recovery_error=repr(error))
                 try:
                     record['stderr'] = worker.close()
-                    assert worker.scope_empty
+                    require(worker.scope_empty, 'acceptance check failed: worker.scope_empty')
                     worker.close()
                 except Exception as error:
                     record.update(status='failed', close_error=repr(error))
@@ -166,11 +180,11 @@ def main():
             recovery = Worker(build / (backend + '-worker'), glycin=backend == 'glycin')
             try:
                 completed_event = threading.Event()
-                assert recovery.request('load', fixture, cancel_event=completed_event)['outcome'] == 'loaded'
+                require(recovery.request('load', fixture, cancel_event=completed_event)['outcome'] == 'loaded', "acceptance check failed: recovery.request('load', fixture, cancel_event=completed_event)['outcome'] == 'loaded'")
                 completed_event.set()
-                assert not recovery.terminal, 'late cancellation affected completed request'
+                require(not recovery.terminal, 'late cancellation affected completed request')
                 decoded = recovery.request('decode', width=2, height=1, capture_pixels=True)
-                assert bytes(decoded['pixels']) == expected
+                require(bytes(decoded['pixels']) == expected, "acceptance check failed: bytes(decoded['pixels']) == expected")
                 record['recovery_pixels_sha256'] = hashlib.sha256(bytes(decoded['pixels'])).hexdigest()
             except Exception as error:
                 record.update(status='failed', recovery_error=repr(error))
@@ -178,9 +192,10 @@ def main():
                 try:
                     record['recovery_stderr'] = recovery.close()
                     record['recovery_cleanup'] = recovery.cleanup
-                    assert recovery.scope_empty
+                    require(recovery.scope_empty, 'acceptance check failed: recovery.scope_empty')
                 except Exception as error:
                     record.update(status='failed', recovery_close_error=repr(error))
+        invocation.checkpoint()
 
     fixture = b''
     expected = bytes([24, 64, 104, 255, 144, 184, 224, 255])
@@ -204,7 +219,7 @@ def main():
             probe = subprocess.run([str(build / 'capture-probe'), str(source), str(source.stat().st_size)],
                                    capture_output=True, timeout=15, check=True)
             fixture = probe.stdout
-            assert fixture == source.read_bytes()
+            require(fixture == source.read_bytes(), 'acceptance check failed: fixture == source.read_bytes()')
             report['fixture_sha256'] = hashlib.sha256(fixture).hexdigest()
             (root / 'captured.png').write_bytes(fixture)
             for backend in ('qt', 'glycin'):
@@ -217,10 +232,10 @@ def main():
         results.append(dict(name='incomplete', status='failed', error=repr(error)))
     required = 11 if args.focused else 35
     report['passed'] = len(results) == required and all(r['status'] == 'passed' for r in results)
-    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    report['passed'] = invocation.finish(results, legacy=report)
     print(f"{sum(r['status'] == 'passed' for r in results)}/{required} passed; {root / 'report.json'}")
     return 0 if report['passed'] else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded_main(main))

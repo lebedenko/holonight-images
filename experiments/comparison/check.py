@@ -12,6 +12,9 @@ import zlib
 from pathlib import Path
 import tempfile
 
+from runtime_evidence import guarded_main, Invocation, destination as evidence_destination, require
+from runtime_suites import scenarios, requirements
+
 from harness import Worker, snapshot
 
 
@@ -19,25 +22,36 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("build", type=Path)
     parser.add_argument("--filter", default="")
+    parser.add_argument('--evidence-dir', type=Path)
+    parser.add_argument('--runtime-bundle', type=Path)
     args = parser.parse_args()
     build = args.build.resolve()
     corpus = build / "corpus"
+    root = evidence_destination(args, build, 'check-')
+    options = dict(filter=args.filter)
+    options.update(build=str(build), runtime_bundle=str((args.runtime_bundle or build / 'runtime-bundle').resolve()),
+                   evidence_dir=str(root))
+    invocation = Invocation(root, 'check', options, scenarios('check', options), requirements('check', options))
+    invocation.runtime_bundle = args.runtime_bundle
     checks = []
 
     def check(name, action):
         if args.filter not in name:
             return
+        invocation.scenario(name)
         try:
             detail = action()
             checks.append(dict(name=name, status="passed", detail=detail))
         except (AssertionError, ValueError, OSError, RuntimeError, TimeoutError) as error:
             checks.append(dict(name=name, status="failed", error=str(error)))
+        invocation.report["records"] = checks
+        invocation.checkpoint()
 
     def snapshots():
         device = io.BytesIO(b"abcd")
         device.seek(3)
-        assert snapshot(device, 4) == b"abcd"
-        assert not device.closed
+        require(snapshot(device, 4) == b"abcd", 'acceptance check failed: snapshot(device, 4) == b"abcd"')
+        require(not device.closed, 'acceptance check failed: not device.closed')
         try:
             snapshot(device, 3)
         except ValueError:
@@ -85,10 +99,10 @@ def main():
                 raise AssertionError("hostile response accepted")
         finally:
             worker.close()
-        assert worker.process.poll() is not None
-        assert worker.scope_empty, "scope cleanup unverified"
+        require(worker.process.poll() is not None, 'acceptance check failed: worker.process.poll() is not None')
+        require(worker.scope_empty, "scope cleanup unverified")
         if worker.cgroup and worker.cgroup.exists():
-            assert not (worker.cgroup / "cgroup.procs").read_text().strip(), "orphan processes"
+            require(not (worker.cgroup / "cgroup.procs").read_text().strip(), "orphan processes")
         return "explicit failure; scope empty or removed"
     for mode in ("crash", "control", "oversize", "stride", "hang"):
         check("protocol-" + mode, lambda mode=mode: faults(mode))
@@ -101,10 +115,11 @@ def main():
                             trace=build / "negative-probe.trace")
             try:
                 result = worker.request("probe")
-                assert result["original_readable"] is False, result
-                assert result["host_network_reachable"] is False, result
+                require(result["original_readable"] is False, result)
+                require(result["host_network_reachable"] is False, result)
                 return result
             finally:
+                worker.abort()
                 worker.close()
     check("filesystem-network-isolation", probe)
 
@@ -125,11 +140,11 @@ def main():
                 worker.request("load", (corpus / name).read_bytes())
                 result = worker.request("decode", width=1, height=1)
                 if name == "invalid-icc.png":
-                    assert result["outcome"] in (0, "success"), result
-                    assert result["first_pixel"] == [100, 50, 25, 128], result
+                    require(result["outcome"] in (0, "success"), result)
+                    require(result["first_pixel"] == [100, 50, 25, 128], result)
                     result["uncertainty"] = "Malformed profile fallback; rejection diagnostic unknown"
                 else:
-                    assert result["first_pixel"] == [100, 50, 25, 128], result
+                    require(result["first_pixel"] == [100, 50, 25, 128], result)
                 return result
             finally:
                 worker.close()
@@ -143,12 +158,12 @@ def main():
                 expected = dict(make="SONY", model="ILCE-7M4", lens="FE 24-70mm F2.8 GM II",
                                 aperture=8, exposure_seconds=.01, focal_length_mm=32, iso=100,
                                 latitude=50.45, longitude=-30.52, altitude_meters=179)
-                assert result, loaded
+                require(result, loaded)
                 for key, value in expected.items():
                     if isinstance(value, str):
-                        assert result[key] == value, (key, result)
+                        require(result[key] == value, (key, result))
                     else:
-                        assert abs(result[key] - value) < 1e-6, (key, result)
+                        require(abs(result[key] - value) < 1e-6, (key, result))
                 return result
             finally:
                 worker.close()
@@ -161,10 +176,10 @@ def main():
                 sequence = worker.request("gif-open") if backend == "qt" else loaded
                 frames = [worker.request("frame") for _ in range(3)]
                 delays = [f.get("delay_ms", f.get("delay_us", 0) / 1000) for f in frames[:2]]
-                assert delays == [30, 70], frames
-                assert frames[0]["pixel_sha256"] != frames[1]["pixel_sha256"], frames
+                require(delays == [30, 70], frames)
+                require(frames[0]["pixel_sha256"] != frames[1]["pixel_sha256"], frames)
                 worker.request("restart")
-                assert worker.request("frame")["pixel_sha256"] == frames[0]["pixel_sha256"]
+                require(worker.request("frame")["pixel_sha256"] == frames[0]["pixel_sha256"], 'acceptance check failed: worker.request("frame")["pixel_sha256"] == frames[0]["pixel_sha256"]')
                 return dict(sequence=sequence, frames=frames)
             finally:
                 worker.close()
@@ -200,9 +215,9 @@ def main():
                         loaded = worker.request("load", data, capsule=True)
                         result = worker.request("svg", capsule=True, width=64, height=32)
                         rendered = bool(result["first_pixel"] and result["first_pixel"][3])
-                        assert rendered == accepted, dict(loaded=loaded, result=result)
+                        require(rendered == accepted, dict(loaded=loaded, result=result))
                         if not accepted:
-                            assert result["outcome"] != "success", result
+                            require(result["outcome"] != "success", result)
                         return result
                     finally:
                         worker.close()
@@ -220,8 +235,8 @@ def main():
     destination.write_text(json.dumps(previous + checks, indent=2) + "\n")
     for result in checks:
         print(json.dumps(result))
-    return 0 if all(c["status"] == "passed" for c in checks) else 1
+    return 0 if invocation.finish(checks) else 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(guarded_main(main))

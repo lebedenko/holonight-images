@@ -118,7 +118,7 @@ def main():
             record['requests'].append(dict(op=op,fields={k:v for k,v in kw.items() if k!='payload'},response=response))
             return response,pixels
         try:
-            worker = Worker(build/binary,glycin='glycin' in binary)
+            worker = Worker(build/binary,runtime_bundle=build/'runtime-bundle',glycin='glycin' in binary)
             def load(op):
                 r,_ = request(op,**({'payload':data} if op=='load' else {}))
                 assert r['outcome'] == ('success' if binary == 'qt-worker' and op == 'restart' else 'loaded'),r

@@ -22,6 +22,19 @@ cmake -S experiments/comparison -B build/comparison -G Ninja \
   -DGLYCIN_BRIDGE="$PWD/build/comparison/rust/release/libcomparison_glycin_bridge.a"
 cmake --build build/comparison
 
+# Prepare the explicitly requested standalone animation diagnostic too.
+cp build/comparison/rust/release/animation-repro build/comparison/glycin-animation-repro
+# Output must not exist. Rebuilds require a freshly prepared bundle.
+python3 experiments/comparison/runtime_bundle.py build/comparison \
+  --diagnostic build/comparison/rust/release/color-repro glycin \
+  --diagnostic build/comparison/glycin-animation-repro glycin \
+  --diagnostic build/comparison/qt-animation-repro qt
+python3 experiments/comparison/runtime-tests.py
+python3 -O experiments/comparison/runtime-tests.py
+# This command prepares its own new bundle, including the native diagnostic.
+python3 experiments/comparison/runtime-check.py build/comparison --regressions \
+  --evidence-dir build/comparison/runtime-acceptance-new
+
 python3 experiments/comparison/run.py build/comparison --smoke --warmups 0 --samples 1
 python3 experiments/comparison/animation.py build/comparison
 python3 experiments/comparison/geometry.py build/comparison
@@ -73,14 +86,152 @@ and verified hierarchical cgroup cleanup. The Rust session ABI is serialized;
 its cancellation entry is not a thread-safe active-decoder interrupt. No sandbox
 failure starts a direct-provider fallback.
 
-The bubblewrap runtime contains an explicit codec-plugin set plus its dynamic
-library closure, a private `/tmp`, and private PID/network namespaces. Glycin gets
-an explicit generated seven-format loader configuration and only the image-rs/SVG
-loader executables; executable/configuration discovery cannot use the original
-environment. Its client-side EXIF orientation, ICC parsing/conversion and memory
-format transformations run inside the outer sandbox. Glycin still explicitly selects
-its own Bwrap loader sandbox. The launcher and runtime inventory are experimental,
-not a reviewed production packaging mechanism.
+Isolated launch requires a prepared `binary.parent/runtime-bundle`; nested diagnostic
+callers explicitly select the comparison build's bundle. `runtime_bundle.py` copies
+host-native workers, the explicit Qt image plugins, Glycin loaders, bwrap and
+xdg-dbus-proxy, MIME data, and their ldd-discovered library closure. Discovery runs
+only during preparation, with a minimal environment and absolute tool paths. Nothing
+is installed and no host runtime file is modified. An optional `--output` selects a
+new bundle directory; pass it as `Worker(..., runtime_bundle=...)` when launching.
+The three core workers are mandatory; diagnostic executables must be requested.
+
+Preparation stages and verifies a version-1 manifest before atomic Linux
+`renameat2(RENAME_NOREPLACE)` publication. Existing outputs are rejected. Library
+aliases are copied as regular files at normalized sandbox destinations. The manifest
+records original entry identities, candidate roles, destinations, sizes, modes,
+SHA-256 hashes, generated loader configuration and tool/package provenance.
+Preflight checks the exact inventory, regular file types, modes, hashes and original
+binary identity before creating a scope. Missing/modified bundles, unknown binaries
+and wrong roles fail explicitly, without preparation or a direct-launch fallback.
+Runtime files are mounted exclusively from the verified bundle; only private capsule
+bytes are added. Glycin explicitly selects its own Bwrap sandbox. The parent launcher
+and scope manager use absolute host tools and a minimal environment retaining only
+required user-manager connection information. The sandbox environment is explicit.
+
+Bundles and manifests are trusted local build artifacts. Integrity checks detect
+missing or modified contents; they do not authenticate upstream packages or defend
+against concurrent writers to trusted files. This private runtime is not production
+packaging. `isolated=False` remains an explicit diagnostic control only.
+
+`runtime-check.py` prepares a fresh bundle and explicitly registers the discovery
+diagnostic. It creates a unique ignored `runtime-evidence-*` directory by default;
+`--evidence-dir` selects a new directory and refuses existing evidence. The same
+option is available on cancellation, capture, linked acquisition and focused checks.
+Their standalone destinations remain available; `check.py` also preserves its legacy
+`checks.json` aggregate, which the parent never uses as acceptance proof.
+
+Evidence report **version 2** declares the suite, exact invocation options, required
+scenario identifiers, per-scenario artifact and scope requirements, scenario results,
+all scope lifecycles, artifact inventory and final status. Suite definitions establish
+expected identifiers before execution. The parent independently supplies expected
+child suites, options, scenarios and evidence requirements. Both zero process status
+and a fresh valid child report are mandatory: cancellation 35, capture 16, linked
+acquisition 36, protocol 5 and capsules 16. Console summaries are informational.
+
+Reports start failed/incomplete, checkpoint scenarios and constructor/cleanup errors,
+and finalize only after structural and artifact validation. Inventory includes every
+regular artifact by relative path, size and SHA-256, including nested child reports;
+only the invocation's own root `report.json` is excluded. Symlinks, escaping paths,
+missing/altered artifacts, missing/duplicate/unexpected/failed scenarios and missing
+scope proof fail acceptance. Required artifacts are validated separately from inventory.
+Each created scope retains launch intent, unit, commands, constructed environments,
+binary/manifest hashes, observed 2 GiB memory and zero-swap limits, launcher reaping
+and empty/removed hierarchical cgroup proof within five seconds. A private launcher
+release barrier allows limits to be observed before a short-lived control exits.
+Injected cleanup failures retain the failed attempt and separate test recovery proof.
+
+Independent host controls prove actual activation through PATH, preload, audit,
+soname library search, a deterministic Qt image plugin, executable-adjacent `qt.conf`,
+Glycin configuration discovery through each of `GLYCIN_DATA_DIR`, `XDG_DATA_HOME`
+and `XDG_DATA_DIRS`, Qt standard-path configuration discovery through XDG configuration
+locations, host-file reads and loopback networking. Every control runs in a bounded
+user scope with an explicitly constructed environment. Each channel also has a
+separate deliberately broken control requiring rejection. Glycin's diagnostic uses
+its public cached configuration API without launching the synthetic loader. Only an
+existing private dependency feature is enabled; no dependencies or lockfiles are added.
+The QPA path remains an environment-exclusion check, not plugin activation proof.
+Host configuration is untouched. The bundled diagnostic must exclude all injected
+values and canary discovery results under the combined poisoned environment.
+
+Twelve candidate trials retain independent PNG and acquired linked-SVG pixels (three
+fresh processes of each kind per candidate), inputs, hashes, commands and raw traces.
+Structured syscall findings distinguish successful executions/path operations, failed
+lookups and network results, with source-line references. Relative paths, directory
+fds, inherited state, PID-namespace translations and Bwrap root changes are tracked;
+pathname mentions in argv are not accesses. Successful Glycin trials require both the
+expected loader and a distinct successful nested Bwrap execution. Unresolved/truncated
+critical evidence fails, including every `???` syscall record. Named noncritical
+calls interrupted by recorded termination are retained separately, never as successes.
+Trace collection uses strace's seccomp-BPF filter and a recorded 100 ms exit-group
+entry delay so outstanding loader calls can settle before thread-group exit. It
+changes scheduling only, preserves syscall arguments/results, and is not performance
+evidence. A graceful wait for traced workers stays within the five-second cleanup budget.
+
+The four launch injections require exact outer/nested stages, execution attempts,
+ENOENT or replacement exit 1 as appropriate, matching diagnostics and structured
+nested load failures. EOF, protocol errors, timeouts and cleanup failures alone never
+satisfy injection contracts. Invalid/missing bundle inputs must fail before scope launch.
+
+Historical version-1 runtime reports, including
+`build/comparison/runtime-evidence-1sp0fuij/`, do **not** satisfy this contract.
+Unchanged codec, retention and performance evidence is reused; historical timings
+do not measure the current launcher. Hashes establish local artifact integrity,
+not upstream authenticity or protection against concurrent trusted-file writers.
+
+
+Fresh verification on **2026-11-06**: 53 deterministic helper tests pass normally and
+under `python -O`; the complete invocation passes **52/52** parent records and all
+child suites (**35/16/36/5/16**). All **224 created scopes** have verified terminal
+cleanup; maximum recorded cleanup is **1.016 s**. The independently reopened parent
+inventory contains **4,450 artifacts**. Inputs include retained acquired main/resource
+bytes, cancellation payloads and independent expected/output pixels.
+The qualifying local report is
+[`runtime-v2-acceptance-final/report.json`](../../build/comparison/runtime-v2-acceptance-final/report.json);
+separate reopening results are in
+[`runtime-v2-independent-validation.json`](../../build/comparison/runtime-v2-independent-validation.json).
+Provider `task test` passes **3/3**, including its installed-package consumer. Earlier
+failed `runtime-v2-*` invocations remain failed diagnostic evidence; they are not
+substitutes for this completed report. Native controls are host-built; container tools
+were used only to apply the pinned formatter. No codec, retention or performance
+campaign was repeated.
+
+To reproduce only these acceptance gates after the host build above, use a new path:
+
+```sh
+python3 experiments/comparison/runtime-tests.py
+python3 -O experiments/comparison/runtime-tests.py
+python3 experiments/comparison/runtime-check.py build/comparison --regressions \
+  --evidence-dir build/comparison/runtime-acceptance-new
+task test
+```
+
+The runner reopens its completed report and all five child reports. To repeat that
+validation in a separate process without executing any scenarios:
+
+```sh
+PYTHONPATH=experiments/comparison python3 - <<'PYTHON'
+import json
+from pathlib import Path
+import runpy
+from runtime_evidence import validate_report, validate_child
+from runtime_suites import scenarios, requirements
+
+suite = runpy.run_path('experiments/comparison/runtime-check.py')
+build = Path('build/comparison').resolve()
+root = build / 'runtime-acceptance-new'
+expected = suite['contract'](True)
+validate_report(root, json.loads((root / 'report.json').read_text()), expected,
+                suite='runtime', requirements=expected,
+                options=dict(regressions=True, build=str(build), evidence_dir=str(root)))
+for index, (script, identity, options, _) in enumerate(suite['SUITES']):
+    child = root / f'regression-{index}-{script}'
+    options = dict(options, build=str(build), runtime_bundle=str(root / 'runtime-bundle'),
+                   evidence_dir=str(child))
+    validate_child(child, suite=identity, options=options,
+                   required=scenarios(identity, options), requirements=requirements(identity, options))
+print('Parent and five child reports validated')
+PYTHON
+```
 
 SVG fixture capsules stage captured main and descendant raster bytes privately.
 The scoped launcher seals memfds and supplies bubblewrap's `--ro-bind-data`; the
@@ -318,3 +469,8 @@ and provider `task test` 3/3 including installed-package consumer. Capture evide
 Both worker binary hashes still match those capture/cancellation runs. New C++ files
 and changed worker ranges pass clang-format; changed Python compiles and whitespace checks
 pass. Full ecosystem/container acceptance and unchanged codec evidence were not repeated.
+
+Final checks pass: native acquisition CTest **2/2**, pinned formatting of new C++
+fixtures, changed-C++ format checks, Python compilation and whitespace checks in both
+repositories. The native socket fixture requires execution outside the agent sandbox;
+its successful outside-sandbox run is the qualifying CTest result.

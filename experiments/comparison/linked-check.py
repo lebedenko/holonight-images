@@ -12,8 +12,13 @@ import tempfile
 import threading
 
 from color import encode
+from runtime_evidence import guarded_main, Invocation, destination, require
+from runtime_suites import scenarios, requirements
+
 from harness import RequestCancelled, Worker, validate_paths
 from linked import acquire
+from runtime_trace import analyze, require_trial
+from runtime_bundle import validate
 
 
 def sha(data):
@@ -31,20 +36,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('build', type=Path)
     parser.add_argument('--focused', action='store_true')
+    parser.add_argument('--evidence-dir', type=Path)
+    parser.add_argument('--runtime-bundle', type=Path)
     args = parser.parse_args()
     build = args.build.resolve()
-    root = Path(tempfile.mkdtemp(prefix='linked-', dir=build))
+    root = destination(args, build, 'linked-')
+    options = dict(focused=args.focused)
+    options.update(build=str(build), runtime_bundle=str((args.runtime_bundle or build / 'runtime-bundle').resolve()),
+                   evidence_dir=str(root))
+    invocation = Invocation(root, 'linked', options, scenarios('linked', options), requirements('linked', options))
+    invocation.runtime_bundle = args.runtime_bundle
     report = dict(results=[], scopes=[])
     results = report['results']
+    invocation.report['records'] = results
 
     def check(name, action):
         record = dict(name=name)
         results.append(record)
+        invocation.scenario(name)
         try:
             action(record)
             record['status'] = 'passed'
         except Exception as error:
             record.update(status='failed', error=repr(error))
+        invocation.checkpoint()
 
     def inputs(name, document, resource=None):
         source = root / name / 'originals'
@@ -61,22 +76,37 @@ def main():
         os.mkfifo(source / 'unreferenced-fifo')
         return source
 
+    def trace_evidence(source, trace, backend='qt'):
+        findings = analyze(trace.read_text(), cwd=str(Path.cwd()), protected=[source, source.parent / 'pinned'])
+        selected = invocation.runtime_bundle or build / 'runtime-bundle'
+        entry = validate(selected, build / (backend + '-worker'), backend == 'glycin')[1]
+        require_trial(findings, entry['destination'])
+        (trace.parent / (trace.name + '.json')).write_text(json.dumps(findings, indent=2) + '\n')
+        return dict(artifact=str(trace.relative_to(root)) + '.json',
+                    events=len(findings['events']), successful_execs=findings['successful_execs'])
+
     def capture(source, record, diagnostic=None, cancel_event=None):
         base = os.open(source, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
         main_fd = os.open(source / 'source.svg', os.O_RDONLY | os.O_CLOEXEC)
         trace = source.parent / 'discovery.trace'
         try:
-            return acquire(build, base, main_fd, 'source.svg', evidence=record,
-                           trace=trace, diagnostic=diagnostic, cancel_event=cancel_event)
+            files = acquire(build, base, main_fd, 'source.svg', evidence=record,
+                            trace=trace, diagnostic=diagnostic, cancel_event=cancel_event)
+            record['captured_artifacts'] = {}
+            for name, data in files.items():
+                retained = source.parent / 'captured' / name
+                retained.parent.mkdir(parents=True, exist_ok=True)
+                retained.write_bytes(data)
+                record['captured_artifacts'][str(retained.relative_to(root))] = sha(data)
+            return files
         finally:
-            assert os.fstat(base) and os.fstat(main_fd), 'caller descriptors closed'
+            require(os.fstat(base) and os.fstat(main_fd), 'caller descriptors closed')
             os.close(main_fd)
             os.close(base)
             if record.get('discovery_cleanup'):
                 report['scopes'].append(record['discovery_cleanup'])
             if trace.exists():
-                record['discovery_original_access'] = str(source) in trace.read_text()
-                assert not record['discovery_original_access'], 'original directory in discovery trace'
+                record['discovery_findings'] = trace_evidence(source, trace)
 
     try:
         report['binaries'] = {name: sha((build / name).read_bytes())
@@ -84,7 +114,7 @@ def main():
         def cpp(record):
             result = subprocess.run([str(build / 'linked-tests')], capture_output=True, timeout=30)
             record.update(returncode=result.returncode, stdout=result.stdout.decode(), stderr=result.stderr.decode())
-            assert result.returncode == 0, record
+            require(result.returncode == 0, record)
         check('cpp-acquisition', cpp)
         def parent_validation(record):
             rejected = 0
@@ -97,7 +127,7 @@ def main():
                     rejected += 1
                 else:
                     raise AssertionError(paths)
-            assert validate_paths(['a', 'a', 'child/b']) == ['a', 'child/b']
+            require(validate_paths(['a', 'a', 'child/b']) == ['a', 'child/b'], "acceptance check failed: validate_paths(['a', 'a', 'child/b']) == ['a', 'child/b']")
             record['rejected'] = rejected
         check('untrusted-manifest', parent_validation)
         def unavailable(record):
@@ -110,8 +140,8 @@ def main():
                                          str(build / 'linked-probe'), str(base), str(main_fd), 'source.svg'],
                                         pass_fds=(base, main_fd), capture_output=True, timeout=15)
                 record.update(returncode=result.returncode, stderr=result.stderr.decode(errors='replace'))
-                assert result.returncode != 0 and not result.stdout
-                assert 'openat2 required' in record['stderr'] and 'ENOSYS (Function not implemented) (INJECTED)' in trace.read_text()
+                require(result.returncode != 0 and not result.stdout, 'acceptance check failed: result.returncode != 0 and not result.stdout')
+                require('openat2 required' in record['stderr'] and 'ENOSYS (Function not implemented) (INJECTED)' in trace.read_text(), "acceptance check failed: 'openat2 required' in record['stderr'] and 'ENOSYS (Function not implemented) (INJECTED)' in trace.read_text()")
             finally:
                 os.close(main_fd)
                 os.close(base)
@@ -126,7 +156,7 @@ def main():
                         source = inputs(record['name'], svg(paths), png)
                         files = capture(source, record)
                         record['captured_hashes'] = {name: sha(data) for name, data in files.items()}
-                        assert set(files) == {'main.svg', *paths}
+                        require(set(files) == {'main.svg', *paths}, "acceptance check failed: set(files) == {'main.svg', *paths}")
                         for path in ('source.svg', 'pixel.png', 'child/pixel.png'):
                             if mutation == 'replace':
                                 (source / path).write_bytes(b'replaced after capture')
@@ -150,13 +180,13 @@ def main():
                                     trial['decode'] = decoded
                                     trial.update(expected_sha256=sha(expected), actual_sha256=sha(actual))
                                     (source.parent / f'{backend}-{repetition}.rgba').write_bytes(actual)
-                                    assert decoded['outcome'] == 'success' and actual == expected, trial
+                                    require(decoded['outcome'] == 'success' and actual == expected, trial)
                                 finally:
                                     trial['stderr'] = worker.close()
                                     trial['cleanup'] = worker.cleanup
                                     report['scopes'].append(worker.cleanup)
-                                    trial['original_access'] = str(source) in trace.read_text()
-                                    assert not trial['original_access'] and worker.scope_empty, trial
+                                    trial['findings'] = trace_evidence(source, trace, backend)
+                                    require(worker.scope_empty, trial)
                     check(case + '-' + mutation, positive)
             invalid = {
                 'external': svg(['https://example.invalid/x']), 'encoded': svg(['pixel%2epng']),
@@ -180,7 +210,7 @@ def main():
                     try:
                         capture(source, record)
                     except (ValueError, RuntimeError):
-                        assert 'identities' not in record, 'partial capsule'
+                        require('identities' not in record, 'partial capsule')
                     else:
                         raise AssertionError('unsupported resource accepted')
                 check('reject-' + name, rejected)
@@ -208,9 +238,9 @@ def main():
                     try:
                         files = capture(source, record, diagnostic, event)
                     except (RuntimeError, RequestCancelled):
-                        assert name != 'base-rename'
+                        require(name != 'base-rename', "acceptance check failed: name != 'base-rename'")
                     else:
-                        assert name == 'base-rename' and files['pixel.png'] == png
+                        require(name == 'base-rename' and files['pixel.png'] == png, "acceptance check failed: name == 'base-rename' and files['pixel.png'] == png")
                 check('barrier-' + name, barrier)
             # Resource content validation belongs to both isolated renderers, never acquisition.
             for name, resource in [('nested-svg', svg(['pixel.png'])), ('invalid-raster', b'not an image'),
@@ -225,11 +255,12 @@ def main():
                         try:
                             worker.request('load', files['main.svg'], capsule=True)
                             reply = worker.request('svg', capsule=True)
-                            assert reply['outcome'] != 'success', reply
+                            require(reply['outcome'] != 'success', reply)
                         finally:
                             worker.close()
                             report['scopes'].append(worker.cleanup)
-                            assert worker.scope_empty and str(source) not in trace.read_text()
+                            trace_evidence(source, trace, backend)
+                            require(worker.scope_empty, 'scope cleanup unverified')
                 check('content-' + name, content)
             # Valid document-local use and embedded raster survive the shared extractor.
             embedded = base64.b64encode(png).decode()
@@ -239,7 +270,7 @@ def main():
             def self_contained(record):
                 source = inputs(record['name'], document)
                 files = capture(source, record)
-                assert set(files) == {'main.svg'}
+                require(set(files) == {'main.svg'}, "acceptance check failed: set(files) == {'main.svg'}")
                 for backend in ('qt', 'glycin'):
                     for repetition in range(3):
                         trace = source.parent / f'{backend}-{repetition}.trace'
@@ -254,23 +285,29 @@ def main():
                                                                         expected_sha256=sha(pixel)))
                             (source.parent / f'{backend}-{repetition}.rgba').write_bytes(actual)
                             (source.parent / 'expected.rgba').write_bytes(pixel)
-                            assert reply['outcome'] == 'success' and actual == pixel, reply
+                            require(reply['outcome'] == 'success' and actual == pixel, reply)
                         finally:
                             worker.close()
                             report['scopes'].append(worker.cleanup)
-                            assert worker.scope_empty and str(source) not in trace.read_text()
+                            trace_evidence(source, trace, backend)
+                            require(worker.scope_empty, 'scope cleanup unverified')
             check('embedded-and-local-fragment', self_contained)
     except Exception as error:
         results.append(dict(name='incomplete', status='failed', error=repr(error)))
-    report['hashes'] = {str(p.relative_to(root)): sha(p.read_bytes())
-                        for p in root.rglob('*') if p.is_file() and p.name != 'unreadable'}
+    report['fixture_cleanup'] = []
+    for path in root.rglob('*'):
+        if path.is_symlink() or path.name == 'unreferenced-fifo':
+            report['fixture_cleanup'].append(str(path.relative_to(root)))
+            path.unlink()
+        elif path.name == 'unreadable':
+            path.chmod(0o644)
     expected_count = 3 if args.focused else 36
     report['passed'] = (len(results) == expected_count and all(r['status'] == 'passed' for r in results)
                         and all(scope and scope.get('scope_empty') for scope in report['scopes']))
-    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    report['passed'] = invocation.finish(results, legacy=report)
     print(f"{sum(r['status'] == 'passed' for r in results)}/{len(results)} passed; {root / 'report.json'}")
     return 0 if report['passed'] else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded_main(main))

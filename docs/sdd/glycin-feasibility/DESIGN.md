@@ -757,3 +757,94 @@ protocol fault checks with explicit cleanup proof pass 5/5, and provider `task t
 passes 3/3 including the installed-package consumer. Changed C++ formatting, Python
 compilation and whitespace checks pass. The repository-wide formatting check remains
 blocked by existing violations in unchanged `gif-facts.h` and `qt-worker.cpp`.
+
+## Verified experimental runtime bundles
+
+The private comparison now requires explicit host-native runtime preparation before
+isolated launch. See the [comparison README](../../../experiments/comparison/README.md) for commands
+and the manifest contract.
+Preparation discovers dependencies once, stages copied workers/plugins/loaders,
+executables and MIME data, and publishes only a verified new directory. Every
+isolated worker validates exact inventory, entry identity/role, modes and SHA-256
+hashes before scope creation; launch never discovers or falls back to host codecs.
+Only bundle runtime files and private captured capsules enter the sandbox. Absolute
+host launch/manager tools receive a minimal environment. Glycin retains explicit
+nested Bwrap selection, the request deadline stays 15 seconds, and scope memory/swap
+limits and the five-second hierarchical terminal cleanup contract remain in force.
+
+The bundle and manifest are trusted local artifacts: hashes detect changed/missing
+contents, not upstream authenticity or concurrent trusted-file mutation. Private
+runtime acceptance retains unique ignored evidence with hostile-environment checks,
+three fresh independent PNG and acquired linked-SVG trials per candidate, traces,
+pixels, limits and cleanup proof. No backend is selected, GIF failures are unchanged,
+cooperative codec interruption remains unproven, and historical timings do not
+measure this launcher. Production APIs, installed consumers, dependencies, installer
+protections and umbrella pins are unchanged.
+
+Historical version-1 verification on 2026-11-06 passed 26 focused bundle/preflight tests and all
+23 strict runtime acceptance records, including three PNG and three acquired
+linked-SVG trials per candidate, hostile discovery overrides, denied host file/network
+access, four outer/nested sandbox failures and partial-constructor cleanup. The
+included regressions passed cancellation (35), capture (16), linked acquisition
+(36), protocol faults (5) and capsules (16). Provider `task test` passed all three
+CTest targets including the installed-package consumer; both private acquisition
+CTest targets, changed C++ formatting, Python compilation and whitespace checks
+passed. A nested Rust color diagnostic also passed with an explicit bundle path.
+Local evidence is in ignored `build/comparison/runtime-evidence-1sp0fuij/` and
+`build/comparison/runtime-diagnostic-kjqhmvom/`. These results cover the experimental
+bundle launcher and do not qualify a backend or replace historical codec gates.
+
+
+## Runtime acceptance evidence version 2
+
+The [comparison README](../../../experiments/comparison/README.md) defines the stronger
+private evidence contract and reproduction command. The previous version-1 runtime
+results above are historical and do not satisfy it. Expected scenario identifiers and
+artifact/scope requirements come from suite definitions before execution; the parent
+independently validates exact child suites and invocation options, all 35/16/36/5/16
+child scenarios, regular-artifact sizes/hashes (including child reports), and terminal
+scope proof. Reports remain failed until validation and are checkpointed through
+constructor, functional and cleanup failures.
+
+Native independent positive and deliberately broken controls cover executable,
+preload/audit/soname-library, Qt plugin/qt.conf, Glycin configuration, XDG diagnostic
+configuration, host-file and loopback discovery. The fresh bundled diagnostic must
+exclude all injected values and activation tokens. Glycin configuration inspection
+uses the existing Rust bridge and public cached configuration API without executing
+a synthetic decoder. The private Cargo feature adds no dependency or lockfile change.
+The QPA variable proves exclusion only in these headless workers.
+
+Structured syscall evidence separates actual accesses and successful execution from
+failed probes and pathname arguments; it records decoded descriptors, relative paths,
+process/PID-namespace inheritance, root changes, network outcomes and source lines.
+The twelve fresh candidate trials must prove worker execution, expected Glycin loader
+and successful distinct nested sandbox execution. Four injection contracts identify
+the precise outer/nested execution failure stage; generic EOF/protocol/timeout failures
+cannot substitute. A release barrier permits observed limits for short-lived scopes. Trace collection
+uses filtered strace with a recorded 100 ms exit-group entry delay to reduce decoding
+races during thread termination; every unresolved syscall still fails acceptance.
+The delay changes scheduling, not syscall results, and is not performance evidence.
+Every created scope requires launcher reaping and hierarchical terminal cleanup;
+injected cleanup failures retain separate successful test recovery proof.
+
+No production API, backend selection, GIF behavior, installer, dependency graph,
+lockfile, umbrella pin, deployment or performance measurement changes. Hashes verify
+local integrity, not upstream provenance or resistance to concurrent trusted writers.
+
+
+Version-2 verification on **2026-11-06** passes **53** deterministic helper tests both
+normally and under `python -O`, **52/52** complete parent scenarios, and child suites
+**35 cancellation, 16 capture, 36 linked acquisition, 5 protocol and 16 capsule**.
+Independent reopening validates **4,450 artifacts** and all **224 created scopes**;
+maximum recorded cleanup is **1.016 s**. Fresh provider `task test` passes **3/3**,
+including the installed-package consumer. Qualifying local evidence is
+`build/comparison/runtime-v2-acceptance-final/report.json`, with separate validation
+in `build/comparison/runtime-v2-independent-validation.json`. Earlier failed version-2
+runs remain diagnostic evidence. Native fixtures use host dependencies; the pinned
+container formatter does not supply deployed binaries. Existing codec, retention and
+performance evidence is reused; these traced runs do not measure performance.
+
+Final checks pass: native acquisition CTest **2/2**, pinned formatting of new C++
+fixtures, changed-C++ format checks, Python compilation and whitespace checks in both
+repositories. The native socket fixture requires execution outside the agent sandbox;
+its successful outside-sandbox run is the qualifying CTest result.

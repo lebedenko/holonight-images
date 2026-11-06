@@ -198,3 +198,27 @@ pub unsafe extern "C" fn comparison_free(s: *mut Session) {
         }
     }));
 }
+
+// Private configuration discovery only: never execute the configured loader.
+#[unsafe(no_mangle)]
+pub extern "C" fn comparison_config() -> *mut std::ffi::c_char {
+    catch_unwind(|| {
+        let config = futures_lite::future::block_on(glycin::config::Config::cached());
+        let mime = glycin::config::MimeType::new_static("image/x-holonight-runtime-control");
+        let selected = config
+            .loader(&mime)
+            .map(|entry| entry.exec.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        std::ffi::CString::new(selected)
+            .map(|value| value.into_raw())
+            .unwrap_or(ptr::null_mut())
+    })
+    .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn comparison_config_free(value: *mut std::ffi::c_char) {
+    if !value.is_null() {
+        drop(unsafe { std::ffi::CString::from_raw(value) });
+    }
+}

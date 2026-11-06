@@ -10,6 +10,9 @@ import tempfile
 
 from color import encode
 from geometry import fixtures, expected_pixels
+from runtime_evidence import guarded_main, Invocation, destination, require
+from runtime_suites import scenarios, requirements
+
 from harness import INPUT_LIMIT, Worker
 
 
@@ -20,9 +23,18 @@ def sha(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('build', type=Path)
-    build = parser.parse_args().build.resolve()
-    root = Path(tempfile.mkdtemp(prefix='capture-', dir=build))
+    parser.add_argument('--evidence-dir', type=Path)
+    parser.add_argument('--runtime-bundle', type=Path)
+    args = parser.parse_args()
+    build = args.build.resolve()
+    root = destination(args, build, 'capture-')
+    options = {}
+    options.update(build=str(build), runtime_bundle=str((args.runtime_bundle or build / 'runtime-bundle').resolve()),
+                   evidence_dir=str(root))
+    invocation = Invocation(root, 'capture', options, scenarios('capture', options), requirements('capture', options))
+    invocation.runtime_bundle = args.runtime_bundle
     results = []
+    invocation.report['records'] = results
     report = dict(results=results)
     try:
         report['binaries'] = {name: sha((build / name).read_bytes())
@@ -49,7 +61,7 @@ def main():
                                    stderr=probe.stderr.decode(errors='replace'),
                                    fixture_sha256=sha(fixture), capture_sha256=sha(captured), bytes=len(captured))
                 report.setdefault('captures', []).append(acquisition)
-                assert probe.returncode == 0 and captured == fixture, acquisition
+                require(probe.returncode == 0 and captured == fixture, acquisition)
                 (root / (name + '-' + mutation + '-captured.bin')).write_bytes(captured)
                 if mutation == 'replace':
                     path.write_bytes(b'replaced after capture')
@@ -58,6 +70,7 @@ def main():
                 for backend in ('qt', 'glycin'):
                     record = dict(name=f'{backend}-{name}-{mutation}', responses=[])
                     results.append(record)
+                    invocation.scenario(record['name'])
                     worker = None
                     try:
                         worker = Worker(build / (backend + '-worker'), glycin=backend == 'glycin')
@@ -68,25 +81,28 @@ def main():
                             decoded = worker.request(operation, width=width, height=height, capture_pixels=True)
                             pixels = bytes(decoded.pop('pixels'))
                             record['responses'].append(dict(load=loaded, inspect=inspected, decode=decoded))
-                            assert loaded['outcome'] == 'loaded', loaded
-                            assert inspected['outcome'] in (0, 'loaded', 'success'), inspected
-                            assert decoded['outcome'] in (0, 'success'), decoded
-                            assert (decoded['width'], decoded['height']) == (width, height), decoded
-                            assert len(pixels) == len(expected), decoded
-                            assert all(abs(a-b) <= (2 if name == 'jpeg' and i % 4 != 3 else 0)
-                                       for i, (a, b) in enumerate(zip(pixels, expected))), decoded
+                            require(loaded['outcome'] == 'loaded', loaded)
+                            require(inspected['outcome'] in (0, 'loaded', 'success'), inspected)
+                            require(decoded['outcome'] in (0, 'success'), decoded)
+                            require((decoded['width'], decoded['height']) == (width, height), decoded)
+                            require(len(pixels) == len(expected), decoded)
+                            require(all(abs(a-b) <= (2 if name == 'jpeg' and i % 4 != 3 else 0)
+                                       for i, (a, b) in enumerate(zip(pixels, expected))), decoded)
                             observations.append((inspected, decoded, pixels))
-                        assert observations[0] == observations[1], 'capture changed inspection or pixels'
+                        require(observations[0] == observations[1], 'capture changed inspection or pixels')
                         (root / (record['name'] + '.rgba')).write_bytes(observations[-1][2])
                         record['status'] = 'passed'
                     except Exception as error:
                         record.update(status='failed', error=str(error))
                     finally:
                         if worker:
-                            record['stderr'] = worker.close()
-                            record['scope_empty'] = worker.scope_empty
-                            if not worker.scope_empty:
-                                record.update(status='failed', cleanup_error='scope not empty or unverified')
+                            try:
+                                record['stderr'] = worker.close()
+                                record['scope_empty'] = worker.scope_empty
+                                require(worker.scope_empty, 'scope not empty or unverified')
+                            except Exception as error:
+                                record.update(status='failed', cleanup_error=repr(error))
+                        invocation.checkpoint()
         path = root / 'overflow.bin'
         path.write_bytes(b'ab')
         for limit in (1, 0, -1, INPUT_LIMIT + 1):
@@ -98,12 +114,11 @@ def main():
             results.append(result)
     except Exception as error:
         results.append(dict(name='incomplete', status='failed', error=str(error)))
-    report['hashes'] = {str(p.relative_to(root)): sha(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
     report['passed'] = len(results) == 16 and all(r['status'] == 'passed' for r in results)
-    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    report['passed'] = invocation.finish(results, legacy=report)
     print(f"{sum(r['status'] == 'passed' for r in results)}/16 passed; {root / 'report.json'}")
     return 0 if report['passed'] else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded_main(main))

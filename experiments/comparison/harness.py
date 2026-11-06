@@ -3,7 +3,6 @@
 """Private comparison transport. No installation or production imports."""
 import hashlib
 import errno
-import functools
 import fcntl
 import json
 import os
@@ -17,6 +16,9 @@ import threading
 import traceback
 import time
 import uuid
+
+from runtime_bundle import validate, host_environment, digest, MANIFEST
+import runtime_evidence
 
 INPUT_LIMIT = 256 * 1024 * 1024
 OUTPUT_LIMIT = INPUT_LIMIT
@@ -36,32 +38,6 @@ def snapshot(device, limit=INPUT_LIMIT):
         result.extend(block)
         if len(result) > limit:
             raise ValueError("input limit")
-
-
-def libraries(paths):
-    result = set()
-    for path in paths:
-        output = subprocess.check_output(["ldd", str(path)], text=True)
-        for line in output.splitlines():
-            for word in line.split():
-                if word.startswith("/"):
-                    result.add(Path(word))
-    return sorted(result)
-
-
-@functools.cache
-def runtime(binary, glycin=False):
-    """Explicit codec plugin set, then the dynamic-linker dependency closure."""
-    root = Path("/usr/lib/qt6/plugins/imageformats")
-    plugins = [root / name for name in ("libqgif.so", "libqjpeg.so", "libqsvg.so",
-                                        "libqtiff.so", "libqwebp.so")]
-    paths = [binary, *plugins]
-    if glycin:
-        paths += [Path("/usr/bin/bwrap"), Path("/usr/bin/xdg-dbus-proxy")]
-        paths = [p for p in paths if p.exists()]
-        paths += [Path("/usr/lib/glycin-loaders/2+/glycin-image-rs"),
-                  Path("/usr/lib/glycin-loaders/2+/glycin-svg")]
-    return sorted(set(paths + libraries(paths)))
 
 
 class RequestCancelled(RuntimeError):
@@ -102,14 +78,42 @@ def validate_file_map(files):
         raise ValueError("captured file limit")
 
 
+def recorded_constructor(function):
+    def construct(self, binary, *args, **kwargs):
+        invocation = runtime_evidence.ACTIVE
+        self.evidence = invocation.begin_scope(binary) if invocation else None
+        self.invocation = invocation
+        try:
+            return function(self, binary, *args, **kwargs)
+        except BaseException as error:
+            if self.evidence is not None:
+                self.evidence['constructor_error'] = repr(error)
+                if self.evidence['phase'] == 'preflight':
+                    self.evidence['phase'] = 'preflight-rejected'
+                invocation.checkpoint()
+            raise
+    return construct
+
+
 class Worker:
-    def __init__(self, binary, isolated=True, capsule=None, glycin=False, trace=None, arguments=(), diagnostic=None, captured_files=None):
+    @recorded_constructor
+    def __init__(self, binary, isolated=True, capsule=None, glycin=False, trace=None, arguments=(), diagnostic=None, captured_files=None, runtime_bundle=None, environment=None, sandbox_executable='/usr/bin/bwrap'):
         if capsule is not None and captured_files is not None:
             raise ValueError("capsule and captured_files are mutually exclusive")
         if captured_files is not None:
             validate_file_map(captured_files)
             if not isolated:
                 raise ValueError("captured files require isolation")
+        self.binary = Path(binary).resolve()
+        selected = runtime_bundle or (self.invocation.runtime_bundle if self.invocation else None)
+        bundle = Path(selected) if selected is not None else self.binary.parent / 'runtime-bundle'
+        if isolated:
+            manifest, entry = validate(bundle, self.binary, glycin)
+            bundle = bundle.resolve()
+        if self.evidence is not None:
+            self.evidence['binary_sha256'] = digest(self.binary)
+            if isolated:
+                self.evidence.update(manifest_sha256=digest(bundle / MANIFEST), entry=entry)
         self._lock = threading.RLock()
         self._cancel_event = None
         self.diagnostic = diagnostic
@@ -118,12 +122,13 @@ class Worker:
         self._cleanup_error = None
         self._closed = False
         self.temporary = tempfile.TemporaryDirectory(prefix="image-comparison-")
-        self.binary = Path(binary).resolve()
         self.stderr = tempfile.TemporaryFile()
         self.peak_rss_kib = 0
         self.memory_series = []
         self.scope_empty = False
         self.operation_deadline = None
+        self.traced = trace is not None
+        self.graceful_close = False
         self.sampled_pids = set()
         self.copied_bytes = 0
         self.cpu_us = 0
@@ -137,25 +142,15 @@ class Worker:
                        "--setenv", "QT_IMAGEIO_MAXALLOC", "256", "--proc", "/proc", "--dev", "/dev",
                        "--tmpfs", "/tmp", "--dir", "/run", "--dir", "/usr/lib", "--symlink", "usr/lib", "/lib",
                        "--symlink", "usr/lib", "/lib64"]
-            for path in runtime(self.binary, glycin):
-                command += ["--ro-bind", str(path), str(path)]
+            command += ['--ro-bind', str(bundle / 'usr/share/mime'), '/usr/share/mime']
+            for record in manifest['files']:
+                if record['destination'].startswith('/usr/share/mime/'):
+                    continue
+                command += ['--ro-bind', str(bundle / record['path']), record['destination']]
             if glycin:
-                config = Path(self.temporary.name) / "glycin-loaders/2+/conf.d"
-                config.mkdir(parents=True)
-                # Only the existing seven raster/SVG contract MIME types are discoverable.
-                text = ""
-                for name, signature in (("png", r"0:\\x89PNG"), ("jpeg", r"0:\\xFF\\xD8\\xFF"),
-                                        ("gif", "0:GIF8"), ("bmp", "0:BM"),
-                                        ("webp", "0:RIFF,8:WEBP"), ("tiff", r"0:II\\x2a\\x00;0:MM\\x00\\x2a")):
-                    text += f"[loader:image/{name}]\nExec=/usr/lib/glycin-loaders/2+/glycin-image-rs\nIdentifiers={signature};\n\n"
-                text += "[loader:image/svg+xml]\nExec=/usr/lib/glycin-loaders/2+/glycin-svg\nIdentifiers=ext:svg;\nExposeBaseDir=true\n\n"
-                (config / "comparison.conf").write_text(text)
-                command += ["--ro-bind", str(Path(self.temporary.name)), "/configuration",
-                            "--setenv", "GLYCIN_DATA_DIR", "/configuration",
-                            "--setenv", "XDG_DATA_DIRS", "/usr/share",
-                            "--setenv", "XDG_DATA_HOME", "/nonexistent"]
-                # MIME detection data, separate from executable discovery.
-                command += ["--ro-bind", "/usr/share/mime", "/usr/share/mime"]
+                command += ['--setenv', 'GLYCIN_DATA_DIR', '/configuration',
+                            '--setenv', 'XDG_DATA_DIRS', '/usr/share',
+                            '--setenv', 'XDG_DATA_HOME', '/nonexistent']
             if captured_files is not None:
                 command += ["--dir", "/capsule"]
                 directories = set()
@@ -190,23 +185,63 @@ class Worker:
                         staged.write_bytes(data)
                         command += ["--ro-bind-data", f"@capsule:{len(capsule_sources)}", target]
                         capsule_sources.append(str(staged))
-            command += ["--", str(self.binary), *map(str, arguments)]
+            command += ["--", entry["destination"], *map(str, arguments)]
+        if isolated and sandbox_executable != '/usr/bin/bwrap':
+            command[0] = str(sandbox_executable)
+            command = ['/usr/bin/env', *command]
         if trace:
-            command = ["strace", "-f", "-e", "trace=process,network,file", "-o", str(trace), *command]
-        if capsule_sources:
-            launch = Path(self.temporary.name) / "launch.json"
-            launch.write_text(json.dumps(dict(command=command, sources=capsule_sources)))
-            # Seal after systemd-run, whose scope launcher closes inherited descriptors.
-            command = [sys.executable, str(Path(__file__).resolve()), str(launch)]
+            command = ["/usr/bin/strace", "-f", "--seccomp-bpf", "-e", "inject=exit_group:delay_enter=100ms", "-n", "--decode-pids=pidns", "-v", "-s", "65535", "-yy", "-e", "trace=process,network,file,dup,dup2,dup3,fcntl,close,fchdir", "-o", str(trace), *command]
+        self.runtime_command = command
+        launch = Path(self.temporary.name) / "launch.json"
+        release = Path(self.temporary.name) / "release"
+        launch_environment = host_environment() if environment is None else dict(environment)
+        launch.write_text(json.dumps(dict(command=command, sources=capsule_sources,
+                                         release=str(release), environment=launch_environment)))
+        command = [sys.executable, str(Path(__file__).resolve()), str(launch)]
         self.unit = "image-comparison-" + uuid.uuid4().hex + ".scope"
-        command = ["systemd-run", "--user", "--scope", "--quiet", "--unit=" + self.unit,
+        command = ["/usr/bin/systemd-run", "--user", "--scope", "--quiet", "--unit=" + self.unit,
                    "--property=MemoryMax=2G", "--property=MemorySwapMax=0", *command]
+        self.launch_command = command
+        self.runtime_manifest = manifest if isolated else None
         self.started = time.monotonic()
-        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=self.stderr, start_new_session=True, bufsize=0,
-                                        close_fds=True)
-        os.set_blocking(self.process.stdin.fileno(), False)
-        os.set_blocking(self.process.stdout.fileno(), False)
+        if self.evidence is not None:
+            self.evidence.update(phase='launch-intent', unit=self.unit, command=command,
+                                 runtime_command=self.runtime_command, environment=launch_environment,
+                                 launcher_environment=host_environment())
+            self.invocation.checkpoint()
+        try:
+            self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=self.stderr, start_new_session=True, bufsize=0,
+                                            close_fds=True, env=host_environment())
+            if self.evidence is not None:
+                self.evidence['launcher_pid'] = self.process.pid
+                self.invocation.checkpoint()
+        except BaseException as error:
+            if self.evidence is not None:
+                self.evidence.update(phase='launcher-failed', error=repr(error))
+                self.invocation.checkpoint()
+            self.stderr.close()
+            self.temporary.cleanup()
+            raise
+        try:
+            os.set_blocking(self.process.stdin.fileno(), False)
+            os.set_blocking(self.process.stdout.fileno(), False)
+            deadline = time.monotonic() + 5
+            while self.cgroup is None:
+                self.sample()
+                if self.process.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('scope startup failed: ' + os.pread(self.stderr.fileno(), 65536, 0).decode(errors='replace'))
+                time.sleep(.005)
+            release.write_text('observed limits')
+        except BaseException:
+            try:
+                self.abort()
+            finally:
+                self.stderr.close()
+                self.process.stdin.close()
+                self.process.stdout.close()
+                self.temporary.cleanup()
+            raise
 
     def sample(self):
         try:
@@ -216,8 +251,15 @@ class Worker:
                     if entry.startswith("0::") and entry.endswith(self.unit):
                         self.cgroup = Path("/sys/fs/cgroup") / entry[3:].lstrip("/")
             if self.cgroup:
+                if self.evidence is not None and 'memory_max' not in self.evidence:
+                    self.evidence.update(phase='created', cgroup=str(self.cgroup),
+                        memory_max=(self.cgroup / 'memory.max').read_text().strip(),
+                        swap_max=(self.cgroup / 'memory.swap.max').read_text().strip())
+                    self.invocation.checkpoint()
                 if (self.cgroup / "memory.max").read_text().strip() != str(2 * 1024**3):
                     raise RuntimeError("process-tree memory ceiling missing")
+                if (self.cgroup / "memory.swap.max").read_text().strip() != "0":
+                    raise RuntimeError("process-tree swap limit missing")
                 pids = [int(p) for p in (self.cgroup / "cgroup.procs").read_text().split()]
                 self.sampled_pids.update(pids)
                 rss = 0
@@ -355,8 +397,8 @@ class Worker:
             raise TimeoutError("cleanup deadline exhausted")
         started = time.monotonic()
         try:
-            result = subprocess.run(["systemctl", "--user", *arguments], capture_output=True,
-                                    text=True, timeout=remaining)
+            result = subprocess.run(["/usr/bin/systemctl", "--user", *arguments], capture_output=True,
+                                    text=True, timeout=remaining, env=host_environment())
         except Exception as error:
             self.cleanup["manager"].append(dict(arguments=arguments, started=started,
                                                 completed=time.monotonic(), error=repr(error)))
@@ -401,6 +443,14 @@ class Worker:
             deadline = getattr(self, "cancel_observed", started) + 5
             self.cleanup = dict(started=started, manager=[], unit=self.unit)
             try:
+                if self.traced and self.graceful_close:
+                    # Let traced exit_group delay and asynchronous loader shutdown
+                    # finish inside this same five-second cleanup budget.
+                    try:
+                        self.process.wait(timeout=min(.5, max(.001, deadline - time.monotonic())))
+                    except subprocess.TimeoutExpired:
+                        pass
+
                 if self.cgroup is None:
                     # A pre-dispatch cancellation can precede scope registration.
                     resolve_deadline = min(deadline, started + 1)
@@ -411,10 +461,22 @@ class Worker:
                             if path.name != self.unit or ".." in path.parts:
                                 raise RuntimeError("invalid scope identity")
                             self.cgroup = path
+                        elif self.process.poll() is not None:
+                            state = self._manager(['show', '--property=LoadState', '--value', self.unit], deadline)
+                            if state in ('', 'not-found'):
+                                self.process.wait(timeout=max(.001, deadline - time.monotonic()))
+                                self.cleanup['unit_absent'] = True
+                                self.scope_empty = True
+                                return
+                            raise RuntimeError('scope has no cgroup; cleanup unverified')
                         elif time.monotonic() >= resolve_deadline:
                             raise RuntimeError("scope identity unavailable; cleanup unverified")
                         else:
                             time.sleep(min(.01, max(0, resolve_deadline - time.monotonic())))
+                if self.evidence is not None and 'memory_max' not in self.evidence and self.cgroup.exists():
+                    self.evidence.update(phase='created', cgroup=str(self.cgroup),
+                        memory_max=(self.cgroup / 'memory.max').read_text().strip(),
+                        swap_max=(self.cgroup / 'memory.swap.max').read_text().strip())
                 self.cleanup["cgroup"] = str(self.cgroup)
                 if not self._scope_empty():
                     self._manager(["kill", "--signal=TERM", self.unit], deadline)
@@ -439,8 +501,20 @@ class Worker:
                 self._cleanup_error = str(error)
                 raise CleanupError(self._cleanup_error) from error
             finally:
+                if self.process.poll() is None:
+                    self.process.kill()
+                    try:
+                        self.process.wait(timeout=max(.001, deadline - time.monotonic()))
+                    except subprocess.TimeoutExpired:
+                        self._cleanup_error = 'launcher reaping unverified'
                 self.cleanup.update(completed=time.monotonic(), launcher_status=self.process.poll(),
                                     scope_empty=self.scope_empty)
+                if self.evidence is not None:
+                    self.evidence.setdefault('cleanup_attempts', []).append(dict(self.cleanup))
+                    self.evidence['cleanup'] = dict(self.cleanup)
+                    if self.cleanup.get('unit_absent') and self.evidence['phase'] != 'created':
+                        self.evidence['phase'] = 'absent'
+                    self.invocation.checkpoint()
 
     def close(self):
         with self._lock:
@@ -449,6 +523,7 @@ class Worker:
             try:
                 if not self.terminal and self.process.poll() is None:
                     self.request("close")
+                    self.graceful_close = True
                 if not self.terminal:
                     self.abort()
             finally:
@@ -463,6 +538,11 @@ class Worker:
 
 if __name__ == "__main__":
     launch = json.loads(Path(sys.argv[1]).read_text())
+    deadline = time.monotonic() + 10
+    while not Path(launch['release']).exists():
+        if time.monotonic() >= deadline:
+            raise TimeoutError('scope release deadline')
+        time.sleep(.005)
     descriptors = []
     for source in launch["sources"]:
         fd = os.memfd_create("comparison-capsule", os.MFD_ALLOW_SEALING)
@@ -475,4 +555,4 @@ if __name__ == "__main__":
         descriptors.append(fd)
     command = [str(descriptors[int(arg.split(':')[1])]) if arg.startswith("@capsule:") else arg
                for arg in launch["command"]]
-    os.execvp(command[0], command)
+    os.execve(command[0], command, launch['environment'])

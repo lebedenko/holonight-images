@@ -128,7 +128,7 @@ def main():
                                   sha256=hashlib.sha256(data).hexdigest(), expected=expected,
                                   uncertainty='Malformed profile assumed sRGB; rejection distinction unknown' if family in ('invalid','truncated') else None)
                     worker = Worker(build / ('rust/release/color-repro' if backend == 'raw-glycin' else 'glycin-worker' if backend == 'glycin' else 'qt-worker'),
-                                    isolated=backend != 'control', glycin='glycin' in backend)
+                                    runtime_bundle=build / 'runtime-bundle', isolated=backend != 'control', glycin='glycin' in backend)
                     try:
                         record['load'] = worker.request('load', data)
                         actual = worker.request('decode', width=len(samples), height=1, capture_pixels=True)

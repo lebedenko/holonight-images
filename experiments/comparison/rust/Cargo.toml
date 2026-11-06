@@ -8,7 +8,7 @@ publish = false
 crate-type = ["staticlib"]
 
 [dependencies]
-glycin = "=3.1.0"
+glycin = { version = "=3.1.0", features = ["unstable-config"] }
 gio = "=0.22.10"
 glib = "=0.22.10"
 futures-lite = "=2.6.1"

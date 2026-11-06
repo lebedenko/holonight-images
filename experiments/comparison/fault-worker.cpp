@@ -72,6 +72,13 @@ int main(int argc, char** argv) {
     }
     for (;;) pause();
   }
+  // Synchronize probes and malformed responses with the request being tested.
+  quint32 requestWire = 0;
+  if (std::fread(&requestWire, 1, 4, stdin) != 4) return 2;
+  const auto requestLength = qFromBigEndian(requestWire);
+  if (requestLength > 65536) return 2;
+  for (quint32 i = 0; i < requestLength; ++i)
+    if (std::getc(stdin) == EOF) return 2;
   QJsonObject response{{"bytes", 0}, {"outcome", "probe"}};
   if (mode == "oversize") response["bytes"] = 256 * 1024 * 1024 + 1;
   if (mode == "stride") {
