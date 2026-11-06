@@ -68,6 +68,9 @@ class Worker:
         self.binary = Path(binary).resolve()
         self.stderr = tempfile.TemporaryFile()
         self.peak_rss_kib = 0
+        self.memory_series = []
+        self.scope_empty = False
+        self.operation_deadline = None
         self.sampled_pids = set()
         self.copied_bytes = 0
         self.cpu_us = 0
@@ -161,6 +164,13 @@ class Worker:
                 self.peak_rss_kib = max(self.peak_rss_kib, rss)
                 cpu = dict(line.split() for line in (self.cgroup / "cpu.stat").read_text().splitlines())
                 self.cpu_us = int(cpu["usage_usec"])
+                memory = dict(line.split() for line in (self.cgroup / "memory.stat").read_text().splitlines())
+                point = dict(timestamp=time.monotonic(), rss_bytes=rss * 1024,
+                             anonymous_bytes=int(memory["anon"]),
+                             memory_current_bytes=int((self.cgroup / "memory.current").read_text()),
+                             process_count=len(pids))
+                self.memory_series.append(point)
+                return point
         except FileNotFoundError:
             pass
 
@@ -196,6 +206,8 @@ class Worker:
         if len(record) > CONTROL_LIMIT:
             raise ValueError("control limit")
         deadline = time.monotonic() + 15
+        if self.operation_deadline is not None:
+            deadline = min(deadline, self.operation_deadline)
         self.transfer(outgoing=struct.pack(">I", len(record)) + record + payload, deadline=deadline)
         length, = struct.unpack(">I", self.transfer(size=4, deadline=deadline))
         if not 0 < length <= CONTROL_LIMIT:
@@ -246,6 +258,8 @@ class Worker:
         self.process.stdin.close()
         self.process.stdout.close()
         subprocess.run(["systemctl", "--user", "stop", self.unit], capture_output=True, timeout=5)
+        self.scope_empty = self.cgroup is not None and (
+            not self.cgroup.exists() or not (self.cgroup / "cgroup.procs").read_text().strip())
         self.temporary.cleanup()
         return error
 

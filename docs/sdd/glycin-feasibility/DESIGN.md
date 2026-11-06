@@ -1,5 +1,123 @@
 # Glycin feasibility and compatibility decision
 
+## Independent GIF triage, 2026-11-06
+
+The separate `animation-triage.py` runner and Qt/Rust public-API reproducers preserve
+production behavior and acceptance criteria. Native Release uses Cargo `--locked`.
+The original Qt prefix (frames 0–11), Glycin prefix (0–2), and existing small Glycin
+disposal-2 seed are checked before bounded greedy frame deletion. Fully specified
+first and final frames remain; expectations and fixture delays are regenerated.
+
+| Classification | Evidence / limit |
+|---|---|
+| Oracle validity | Passed: descriptors, global/local palettes, GCEs, declarations and clear/literal LZW streams match definitions; hand-calculated 2×1 canvases cover disposal 1/2/3, transparency and consecutive 3. This validates this generator subset, not arbitrary GIFs. |
+| Wrapper equivalence | Raw API and existing worker frames agree for exercised pixels, dimensions, delays and exhaustion outcomes. Raw errors remain separate; end delays and missing versus zero end dimensions are not compared. |
+| Qt pixels | Failed independently: prefix frame 11 at (130,70), red 19 versus 239; bounded deletion finds original frames 0,10,11. The 3×2 local-palette disposal-2 control fails, global variant passes. Matching upstream Qt 6.12.0 source supports active-local-table background lookup as cause; distribution patch audit remains unproven. |
+| Glycin pixels | Failed independently: prefix frame 2 at (13,7), opaque background versus transparent black; small disposal-2 and 3×2 controls reproduce. Three-frame seeds do not reduce further. Specific client/loader/image-rs attribution remains unproven without matching loader source. |
+| Exhaustion | Qt passes; Glycin returns success,success,end,success,end,success for absent/finite/infinite declarations. Stable exhaustion acceptance fails through both APIs. Persistent-end contract violation is unproven: the locked API documents looping control but not repeated calls after end errors. |
+
+Final native evidence: `build/comparison/animation-triage-20261106-021934-2352a34d/`:
+153 worker probes (87 passed, 66 expected candidate failures, none unproven), 69/69
+wrapper comparisons passed, every scope closed. The runner exits 1 for the failures.
+The initial sandbox-denied invocation and earlier runner corrections remain preserved
+as unproven/superseded evidence, rather than being used for decoder attribution.
+
+Verification after diagnostic implementation: oracle self-checks and Python compile
+checks passed; animation-only acceptance recorded 16 passes and 8 candidate failures;
+geometry/GIF passed 165/165 and color passed 96/96. Experimental checks passed 31/31;
+provider `task test` passed 3/3 including the installed-package consumer. C++ and Rust
+reproducer formatting and both repositories' whitespace checks passed. No retention
+workload or benchmark was repeated.
+
+All final cases are repeated in three fresh workers, sequentially, including small
+controls for palettes, opaque disposal 2, transparency and consecutive disposal 3.
+No transparent-background disposal convention is tested. Reduction is the smallest
+found within 32 trials per seed, not a global-minimality claim. No compositor fix,
+exhaustion latch, production API, dependency version, installation or pin changes.
+
+[Local report drafts](../../../experiments/comparison/GIF-UPSTREAM-REPORT-DRAFT.md)
+contain independently reproduced findings and source/contract uncertainty. They have
+not been submitted. The matching locked Rust client source was inspected locally;
+matching loader source retrieval was unsuccessful. Prior retention and performance
+evidence above is reused. `animation.py --skip-retention` reruns unchanged animation
+checks without retention workloads; default invocation remains unchanged.
+
+## GIF disposal and bounded session retention, 2026-11-06
+
+**Both candidates remain experimental.** The private `animation.py` runner creates
+GIF89a bytes with explicit global/local palettes, image rectangles, control extensions
+and clear/literal LZW streams. Expected canvases come from an independent Python
+compositor following the [GIF89a specification](https://giflib.sourceforge.net/gifstandard/GIF89a.html):
+dispose the previous frame before painting, skip transparent indices, restore the
+opaque global background for disposal 2, and save/restore the affected rectangle for
+consecutive disposal-3 frames. No candidate encoder or decoder supplies expectations.
+All comparisons are exact native premultiplied RGBA bytes, with 30/70/110 ms delays.
+
+Final native Release evidence is in ignored
+`build/comparison/animation-20261106-020641-2f4e5889/`. Earlier attempts remain intact,
+including runner sequencing corrections and a retention fixture variant that combined
+transparency with disposal 2; only the final opaque-background variant supports the
+classifications below. `results.json` contains responses, hashes, frame failures,
+checkpoints, timestamped memory series, diagnostics and scope closure. The directory
+also holds fixtures, reference/actual/difference pixels, retention definitions and
+expected hashes, plus a file/binary hash manifest. Performance evidence was reused;
+no benchmarks were repeated.
+
+| 12×8 fixture | Direct provider | Isolated Qt | Isolated Glycin |
+|---|---|---|---|
+| Disposal 1, overlapping rectangles | Passed | Passed | Pixels passed; repeated end failed |
+| Disposal 2, opaque global background | Passed | Passed | Pixels and repeated end failed |
+| Disposal 3, consecutive restore-previous over patterned content | Passed | Passed | Pixels passed; repeated end failed |
+| Transparent patch preservation | Passed | Passed | Pixels passed; repeated end failed |
+| Local palette reusing global indices | Passed | Passed | Pixels passed; repeated end failed |
+| Mixed, absent / finite-repeat 2 / infinite declarations | Passed, all three | Passed, all three | Pixels and repeated end failed, all three |
+
+Each case also checks full logical dimensions, order, delays, inspection, exhaustion,
+three additional end requests, restart after exhaustion and midway, original first
+frame and subsequent sequence, geometry and captured orientation policy. Glycin's
+first end response does not establish stable exhaustion: later requests return frames
+despite retaining `loop_animation(false)`. Restarts, geometry, declared delays and
+supplemental loop facts passed the exercised comparisons. Supplemental
+`supplemental-gif-block-reader` facts remain separate from Qt's native `loop_count`;
+there is no new native Glycin loop-fact claim. Backend agreement is not the oracle.
+
+The deterministic 256×128, 128-frame retention fixture mixes full and partial updates,
+disposal 1–3, transparency and local palettes; disposal-2 frames have no transparency
+flag. Fresh workers run sequentially, one at a time. Traversal uses one full warmup
+then eight measured traversals, sampling every 16 frames. Partial restart uses four
+warmup cycles then 64 measured cycles, reading four frames per restart. Every frame
+is checked while processing; parent records retain hashes rather than frame pixels.
+All six workloads completed with 64 measured checkpoints each, within the combined
+180-second budget per candidate. Every scope was empty or removed on closure.
+
+| Candidate / workload | RSS median growth, KiB | Anonymous median growth, KiB | Memory gate | Frame correctness |
+|---|---:|---:|---|---|
+| Direct / traversal | 0 | 0 | Passed | Failed: 189 frame comparisons |
+| Direct / partial restart | 8 | -76 | Passed | Passed |
+| Isolated Qt / traversal | 0 | 0 | Passed | Failed: 189 frame comparisons |
+| Isolated Qt / partial restart | 4 | 0 | Passed | Passed |
+| Isolated Glycin / traversal | 122 | 122 | Passed | Failed: 729 frame comparisons |
+| Isolated Glycin / partial restart | -216 | -234 | Passed | Failed: 136 frame comparisons |
+
+Growth compares medians of the first eight and last eight measured checkpoints,
+independently gated at 32 MiB for summed scope-process RSS and cgroup anonymous
+memory. Absolute medians, intermediate series, `memory.current`, RSS peaks and live
+process counts are retained separately (maximum observed counts: direct 1, Qt 3,
+Glycin 6). Sample failures/incomplete workloads are unproven and force nonzero exit.
+Synthetic plateau, excessive RSS growth, excessive anonymous growth and missing
+checkpoint traces validate the analyzer. The runner exits 1 for the preserved
+candidate failures; no compositing corrections, tolerance or threshold changes were
+made to qualify them.
+
+Verification: native Release Cargo `--locked` and CMake build; final animation run;
+existing geometry/GIF (165 passed), color (all 96 passed) and experimental regression
+checks passed; provider `task test` passed all three tests including installed-package.
+No production APIs, dependencies, consumer scheduling, installation rules or pins
+changed. This bounded post-warmup gate does not prove leak freedom or memory
+independent of animation length. Unspecified/reserved disposal, transparent-background
+disposal conventions, playback scheduling, strict streaming-memory bounds,
+active-decoder cancellation and production acquisition/deployment remain unproven.
+
 ## Orientation, geometry and intrinsic GIF facts, 2026-11-06
 
 **Both candidates remain experimental; no production backend is selected.** This

@@ -25,3 +25,7 @@ if(GLYCIN_BRIDGE)
   target_link_libraries(glycin-worker PRIVATE comparison-provider Qt6::Svg "${GLYCIN_BRIDGE}"
     PkgConfig::GLIB PkgConfig::LCMS PkgConfig::SECCOMP PkgConfig::FONTCONFIG dl pthread m)
 endif()
+# Standalone public-API diagnostic; never installed or linked to provider code.
+add_executable(qt-animation-repro qt-animation-repro.cpp)
+target_link_libraries(qt-animation-repro PRIVATE Qt6::Core Qt6::Gui)
+target_compile_options(qt-animation-repro PRIVATE -Wall -Wextra -Wpedantic)

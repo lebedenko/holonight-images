@@ -23,6 +23,7 @@ cmake -S experiments/comparison -B build/comparison -G Ninja \
 cmake --build build/comparison
 
 python3 experiments/comparison/run.py build/comparison --smoke --warmups 0 --samples 1
+python3 experiments/comparison/animation.py build/comparison
 python3 experiments/comparison/geometry.py build/comparison
 python3 experiments/comparison/color.py build/comparison
 python3 experiments/comparison/check.py build/comparison
@@ -116,3 +117,45 @@ are unavailable. The private `gif-scan` operation exposes this fact independentl
 loader failure. Qt's native `loop_count` remains separate: in these fixtures it
 recognizes NETSCAPE2.0 but ignores ANIMEXTS1.0. Neither intrinsic fact describes
 `loop_animation(false)`, frame exhaustion or manual restart.
+
+`animation.py` independently generates GIF89a palettes, rectangles, disposal controls
+and literal LZW data, and composites expected pixels without candidate codecs. It
+checks exact native frames, delays, stable exhaustion and restarts for disposal 1–3,
+transparency, local palettes and mixed loop declarations. It then runs sequential
+fresh-worker traversal/restart retention workloads on a deterministic 128-frame GIF.
+Each workload requires 64 measured checkpoints; first/last eight medians may grow at
+most 32 MiB in each of summed RSS and cgroup anonymous memory. A shared 180-second
+request deadline cap covers both workloads per candidate; the normal 15-second
+request limit and 2 GiB scope ceiling remain. Missing measurements are unproven.
+Timestamped series also record `memory.current` and process counts. Every closure
+must leave an empty or removed scope. Synthetic analyzer traces run before workers.
+
+Every invocation creates a unique ignored `build/comparison/animation-*/` directory
+with responses, fixtures, exact pixel differences, hashes, retention checkpoints,
+series and diagnostics. Pixel failures are recorded while processing rather than
+accumulating retention pixels in parent memory. Memory classification is separate
+from frame correctness; either failure produces nonzero exit. This is a bounded
+regression gate after warmup, not leak-freedom or streaming-memory proof. See the
+local design for preserved candidate failures; no backend corrections are applied.
+
+GIF diagnosis is separate from acceptance:
+
+```sh
+cp build/comparison/rust/release/animation-repro build/comparison/glycin-animation-repro
+python3 experiments/comparison/animation-triage.py build/comparison --self-check
+python3 experiments/comparison/animation-triage.py build/comparison
+python3 experiments/comparison/animation.py build/comparison --skip-retention
+```
+
+`animation-repro` is an automatically discovered Cargo binary in the private crate;
+`qt-animation-repro` is built only by this standalone experimental CMake project.
+Neither uses provider processing or the bridge. The triage runner validates fixture
+blocks and clear/literal streams, checks hand-calculated canvases, reduces the three
+original seeds (at most 32 trials each), and runs each final/control/exhaustion pair
+three times sequentially. Its unique `animation-triage-*/` directory contains definitions,
+GIF bytes, expected/actual/difference RGBA, first differences, request traces, scope
+closure, diagnostics, reduction history, identities and a hash manifest. Wrapper
+comparison checks outcomes, frame dimensions, delays and pixels; absent dimensions
+on end normalize to zero and end delays are excluded. All raw fields remain recorded.
+Failures and incomplete probes return nonzero. `--skip-retention` preserves existing
+compositing checks while reusing prior retention evidence; default acceptance is unchanged.
