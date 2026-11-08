@@ -217,3 +217,36 @@ excluded for the unchanged legacy runtime initializers. No unrelated container
 acceptance or latency matrix is rerun. Session optimization, runtime-generation
 reuse, prestarted workers, remaining Experiment 0 measurements, deployment,
 publication and pin updates remain outside this milestone.
+
+## Experiment 0 attribution (2026-11-09)
+
+The umbrella's [diagnostic overlay tooling](../../../../tooling/preview-benchmark/README.md#experiment-0-attribution-and-scheduler-evidence-2026-11-09)
+archives Images `a772a67` into a separately named D build, with the original
+File Browser/Thumbnails revisions. Production sources and interfaces remain
+unchanged. Private probes correlate capture, runtime validation, launcher/readiness,
+transfer, response validation, acknowledgement/exit and cleanup with consumer jobs.
+Bounded helper stderr reports provider execution and reply serialization without
+changing stdout framing. Provider execution includes format sniffing and provider
+work, not just codec time. Parent/helper intervals remain separate; overlapping
+phases are never summed. Overflow, truncation and absent observations are explicit.
+
+Pre-acknowledgement cpu.stat/memory.peak and a separate 10 ms parent-RSS/concurrent
+scope-memory pass retain resource evidence before helper exit. One-second settled
+scope/process observations do not replace the hierarchical cleanup proof and do
+not establish leak freedom.
+
+The attribution pass stopped at its first cleanup failure after 216/280 samples
+and 544 provider calls. The full diagnostic records a successful operation, exited
+launcher, unreadable hierarchical observation, no proof, and no manager commands.
+No retry or extra manager cleanup followed. This is a new observed failure stage,
+not an explanation of the two historical failures. The independent resource pass
+completed 84 samples and 220 operations. See the
+[umbrella evidence report](../../../../docs/initiatives/image-isolation.md#experiment-0-missing-evidence-2026-11-09)
+for artifacts, counts, missing observations and limitations.
+
+Native Release provider/runtime and installed/relocated checks pass 9/9; focused
+capture, protocol and cleanup checks pass 3/3. Static analysis passes on the
+instrumented sources. Experiment 0 remains incomplete. Resolve the cleanup gate
+before choosing an optimization; runtime-generation reuse is only a conditional
+next experiment suggested by the observed validation cost. No optimization or
+cleanup behavior change is included in this milestone.
