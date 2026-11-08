@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "runtime.h"
 
+#include "cleanup.h"
+
 #include <QCryptographicHash>
 #include <QDeadlineTimer>
 #include <QDirIterator>
@@ -125,87 +127,50 @@ QString groupOf(qint64 pid, const QString& unit) {
   }
   return {};
 }
-bool empty(const QString& group) {
-  if (group.isEmpty()) {
-    return false;
-  }
-  if (!QFileInfo::exists(group)) {
-    return true;
-  }
-  return fileBytes(group + "/cgroup.events").split('\n').contains("populated 0");
-}
-QString manager(const QStringList& args, QDeadlineTimer& deadline) {
-  QProcess process;
-  process.setProcessEnvironment(environment());
-  process.start("/usr/bin/systemctl", QStringList{"--user"} + args);
-  if (!process.waitForFinished(static_cast<int>(qMax<qint64>(1, deadline.remainingTime())))) {
-    process.kill();
-    process.waitForFinished(1);
-    throw ProtocolError("scope manager deadline");
-  }
-  if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-    throw ProtocolError("scope manager failed");
-  }
-  return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-}
-// Keep the ordered security/lifecycle checks together for auditing.
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-bool cleanup(QProcess& process, const QString& unit, QString& group) {
-  QDeadlineTimer deadline(5000);
-  try {
-    if (group.isEmpty()) {
-      auto path = manager({"show", "--property=ControlGroup", "--value", unit}, deadline);
-      if (!path.isEmpty() && path.startsWith('/') && QDir::cleanPath(path) == path && path.endsWith('/' + unit)) {
-        {
-          group = "/sys/fs/cgroup" + path;
-        }
-      } else {
-        process.waitForFinished(50);
-        if (process.state() == QProcess::NotRunning &&
-            manager({"show", "--property=LoadState", "--value", unit}, deadline) == "not-found") {
-          return true;
-        }
-        throw ProtocolError("scope identity unavailable");
-      }
+class NativeCleanup final : public CleanupOperations {
+ public:
+  explicit NativeCleanup(QProcess& launcher) : launcher_(launcher) { clock_.start(); }
+  qint64 now() override { return clock_.elapsed(); }
+  GroupState observe(const QString& group) override { return observeGroup(group); }
+  int launcherState() override { return launcher_.state(); }
+  void waitLauncher(qint64 milliseconds) override { launcher_.waitForFinished(static_cast<int>(milliseconds)); }
+  void killLauncher() override { launcher_.kill(); }
+  void pause() override { QThread::msleep(5); }
+  ManagerResult manager(const QStringList& args, qint64 remaining) override {
+    ManagerResult result;
+    QProcess process;
+    process.setProcessEnvironment(environment());
+    QDeadlineTimer deadline(remaining);
+    process.start("/usr/bin/systemctl", QStringList{"--user"} + args);
+    result.started = process.waitForStarted(static_cast<int>(remaining));
+    auto drain = [&] {
+      auto append = [](QByteArray& target, const QByteArray& bytes, bool& truncated) {
+        truncated = truncated || target.size() + bytes.size() > 4096;
+        target += bytes.left(qMax<qsizetype>(0, 4096 - target.size()));
+      };
+      append(result.output, process.readAllStandardOutput(), result.output_truncated);
+      append(result.errors, process.readAllStandardError(), result.errors_truncated);
+    };
+    while (result.started && process.state() != QProcess::NotRunning && !deadline.hasExpired()) {
+      process.waitForFinished(static_cast<int>(qMin<qint64>(5, deadline.remainingTime())));
+      drain();
     }
-    if (!empty(group)) {
-      try {
-        manager({"kill", "--signal=TERM", unit}, deadline);
-      } catch (...) {
-        if (!empty(group)) {
-          throw;
-        }
-      }
-      QElapsedTimer grace;
-      grace.start();
-      while (!empty(group) && grace.elapsed() < 1000 && !deadline.hasExpired()) {
-        QThread::msleep(5);
-      }
-      if (!empty(group)) {
-        try {
-          manager({"kill", "--signal=KILL", unit}, deadline);
-        } catch (...) {
-          if (!empty(group)) {
-            throw;
-          }
-        }
-      }
+    result.timed_out = process.state() != QProcess::NotRunning;
+    if (result.timed_out) {
+      process.kill();
+      process.waitForFinished(1);
     }
-    while (!empty(group) && !deadline.hasExpired()) {
-      QThread::msleep(5);
-    }
-    if (process.state() != QProcess::NotRunning) {
-      process.waitForFinished(static_cast<int>(qMax<qint64>(1, deadline.remainingTime())));
-    }
-    if (!deadline.hasExpired() && empty(group) && process.state() == QProcess::NotRunning) {
-      return true;
-    }
-  } catch (...) {
+    drain();
+    result.exit_code = process.exitCode();
+    result.exit_status = process.exitStatus();
+    result.error = process.errorString();
+    return result;
   }
-  process.kill();
-  process.waitForFinished(static_cast<int>(qMax<qint64>(1, deadline.remainingTime())));
-  return false;
-}
+
+ private:
+  QProcess& launcher_;  // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members): borrowed per-call launcher
+  QElapsedTimer clock_;
+};
 }  // namespace
 void verifyRuntime(const QString& directory) { validate(directory); }
 
@@ -406,20 +371,14 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
     result.status = RuntimeStatus::ProtocolFailure;
     result.diagnostic = QString::fromUtf8(e.what());
   }
-  if (cancelled.load()) {
-    result.status = RuntimeStatus::Cancelled;
-    result.reply.reset();
+  const auto original = result.status;
+  const auto message = result.diagnostic;
+  std::optional<CleanupReport> report;
+  if (launched) {
+    NativeCleanup operations(process);
+    report = cleanup(operations, unit, group);
   }
-  if (launched && !cleanup(process, unit, group)) {
-    result.status = RuntimeStatus::CleanupFailure;
-    result.diagnostic = "hierarchical cleanup or launcher reaping unverified";
-  }
-  if (cancelled.load() && result.status != RuntimeStatus::CleanupFailure) {
-    result.status = RuntimeStatus::Cancelled;
-  }
-  if (result.status != RuntimeStatus::Success) {
-    result.reply.reset();
-  }
+  finishCleanup(result, original, message, report ? &*report : nullptr, cancelled.load());
   result.elapsed = elapsed.elapsed();
   return result;
 }

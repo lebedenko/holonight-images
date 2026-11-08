@@ -139,3 +139,81 @@ The gate now passes (`build/acceptance/integration-jq5iuo7r`). Native provider,
 relocated installed consumer and lifecycle acceptance also pass 8/8 after adding
 the prefix-relative `HolonightImages_RUNTIME_DIRECTORY` package export. The
 production transport and launcher remain unchanged.
+
+## Cleanup attribution milestone (2026-11-08)
+
+**Diagnostics implemented; historical cause unresolved.** The two failures from
+Experiment 0 remain preserved under umbrella `build/preview-experiments-ak2cd2cp`.
+The diagnostic run did not reproduce them; this is not evidence that they are fixed.
+
+The private cleanup result now carries stage (`scope-identity`, `term`, `kill`,
+`hierarchical-proof`, or `launcher-reaping`), elapsed milliseconds, unit/cgroup,
+last cgroup observation, proof and final launcher state. Observations distinguish
+confirmed removal (`stat` ENOENT), hierarchical `populated=0`, populated,
+unavailable identity, unreadable observation and malformed content. Manager
+`not-found` with a reaped launcher remains the existing identity-free proof.
+Unknown observations cannot supply proof. A private per-invocation operations
+interface supplies manager execution, observation, launcher state/waits and
+monotonic time to deterministic tests; production uses the real implementations.
+
+Failures serialize version-1 JSON through the existing diagnostic string, with
+`operation.status` (the unchanged RuntimeStatus ordinal) and `operation.message`
+preserved before cleanup/cancellation precedence is applied. The optional
+`cleanup` object contains the above facts and manager argument lists, start result,
+error text, exit code/status, timeout and stdout/stderr. Captured streams are capped
+at 4 KiB, with `...[truncated]` markers; compact UTF-8 JSON is capped at 64 KiB by
+further shortening command text with an explicit `truncated: true` marker while
+retaining manager outcome fields.
+Detailed JSON is generated only for failure. No diagnostic-only manager calls or
+cgroup polls, global logging, production environment switches, wire changes,
+public signatures, status changes or translated UI changes were added.
+
+The sequence retains the five-second cleanup budget, at most one-second TERM
+grace followed by KILL when necessary, hierarchical proof and launcher reaping.
+Cleanup failure still suppresses results and wins over cancellation; cancellation
+wins over successful delivery. The consumer deadline remains three seconds.
+
+A deterministic regression demonstrated that the old `contains("populated 0")`
+parser accepted contradictory population records. The corrected parser requires
+exactly one valid populated record. Observation errors are now distinguished from
+confirmed removal rather than treating every failed existence check as removal.
+Neither condition has been observed in the historical failures. The pre-correction
+failure is retained as `pre-correction-regression.log`; it was produced by restoring
+the old permissive predicate in the new observation boundary before running the
+same regression. The corrected tests cover valid/removed/unknown/malformed scopes,
+query/signal disappearance, manager start/exit/timeout/malformed results,
+TERM-resistant descendants, deadline/reaping failure, cancellation, original
+failure preservation and bounded JSON.
+
+Evidence is separate from fixed B:
+
+- Provider: `holonight-images/build/cleanup-diagnostic-20261108`, native Release,
+  fresh prepared `runtime-serialization-final`; final native CTest **9/9**, including installed
+  and relocated consumers and lifecycle faults. Focused cleanup/capture/protocol
+  CTest **3/3**, with **11** deterministic cleanup cases. The initial sandbox
+  runtime failures remain in `native-runtime.log`; native execution passes.
+- Umbrella: `build/cleanup-diagnostic-20261108`; freshly installed provider and
+  rebuilt File Browser, Files and chooser acceptance binaries. Focused File
+  Browser isolation **5/5**, existing Files/chooser offscreen acceptance passes.
+- Installed-provider probe: `tooling/cleanup-diagnostic`, using the four frozen
+  fixtures in `build/preview-experiments-ak2cd2cp/measure-fivw3ih0/fixtures`.
+  `native-probe.jsonl` records **1,000 cycles / 3,000 successful operations** in
+  **291.613 seconds**, including inspection, source decode and cached-PNG decode.
+  The first invocation supplied a relative runtime and performed no launches;
+  its `sandbox-probe.jsonl` is invalid preparation evidence, not a reproduction
+  run or qualifying measurement. The probe now rejects that input immediately.
+
+The bounded probe and consumer acceptance used `runtime-final`; the final
+serialization-only change shortens oversized command text while preserving command
+outcomes. Its deterministic tests and the provider/runtime suite were rerun with
+`runtime-serialization-final`; unchanged cleanup decisions reuse the consumer
+acceptance and bounded-run evidence. The probe uses the grid raster policy
+(64,000,000 pixels, 32,768 extent); all frozen fixtures also fit the pane policy.
+
+Changed-source formatting and native static analysis are checked separately from
+runtime acceptance. Host clang-tidy uses a copied compilation database with the
+GCC-only `-mno-direct-extern-access` flag removed; its new trailing-comma check is
+excluded for the unchanged legacy runtime initializers. No unrelated container
+acceptance or latency matrix is rerun. Session optimization, runtime-generation
+reuse, prestarted workers, remaining Experiment 0 measurements, deployment,
+publication and pin updates remain outside this milestone.

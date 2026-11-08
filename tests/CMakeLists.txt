@@ -13,6 +13,9 @@ target_link_libraries(svg-without-image-plugin-test PRIVATE HolonightImages::Ima
 add_test(NAME svg-without-image-plugin COMMAND svg-without-image-plugin-test)
 
 if(HOLONIGHT_IMAGES_ISOLATED)
+  add_executable(isolated-cleanup-test isolated_cleanup_test.cpp)
+  target_link_libraries(isolated-cleanup-test PRIVATE HolonightImages::Isolated GTest::gtest_main)
+  add_test(NAME isolated-cleanup COMMAND isolated-cleanup-test)
   add_executable(isolated-capture-test isolated_capture_test.cpp)
   target_link_libraries(isolated-capture-test PRIVATE HolonightImages::Isolated)
   add_test(NAME isolated-capture COMMAND isolated-capture-test)
