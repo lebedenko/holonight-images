@@ -3,14 +3,20 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QJsonValue>
+
 #include <optional>
 
 // A structural scan only: never decompresses pixels or replaces decoder validation.
 inline QJsonObject gifLoopFact(const QByteArray& bytes) {
-  QJsonObject fact{{"provenance", "supplemental-gif-block-reader"}, {"scan_status", "unavailable"},
-                   {"raw_declaration", QJsonValue::Null}, {"total_plays", QJsonValue::Null},
+  QJsonObject fact{{"provenance", "supplemental-gif-block-reader"},
+                   {"scan_status", "unavailable"},
+                   {"raw_declaration", QJsonValue::Null},
+                   {"total_plays", QJsonValue::Null},
                    {"infinite", QJsonValue::Null}};
-  auto fail = [&](const char* reason) { fact["reason"] = reason; return fact; };
+  auto fail = [&](const char* reason) {
+    fact["reason"] = reason;
+    return fact;
+  };
   if (bytes.size() > 256LL * 1024 * 1024) return fail("input-limit");
   qsizetype pos = 0;
   unsigned blocks = 0;
@@ -44,8 +50,8 @@ inline QJsonObject gifLoopFact(const QByteArray& bytes) {
     if (kind == 0x2c) {
       const auto descriptor = pos;
       if (!take(9)) return fail("image-descriptor");
-      if (!(byte(descriptor + 4) | byte(descriptor + 5)) ||
-          !(byte(descriptor + 6) | byte(descriptor + 7))) return fail("image-dimensions");
+      if (!(byte(descriptor + 4) | byte(descriptor + 5)) || !(byte(descriptor + 6) | byte(descriptor + 7)))
+        return fail("image-dimensions");
       if (!table(byte(descriptor + 8))) return fail("local-color-table");
       if (!take(1)) return fail("lzw-code-size");
       if (byte(pos - 1) < 2 || byte(pos - 1) > 8) return fail("lzw-code-size");
@@ -53,7 +59,8 @@ inline QJsonObject gifLoopFact(const QByteArray& bytes) {
       extension = true;
       if (!take(1)) return fail("extension-label");
       label = byte(pos - 1);
-    } else return fail("block-kind");
+    } else
+      return fail("block-kind");
     unsigned index = 0;
     bool foundLoop = false;
     while (true) {
@@ -65,10 +72,10 @@ inline QJsonObject gifLoopFact(const QByteArray& bytes) {
       if (!take(length)) return fail("subblock-payload");
       if (extension && (extensionBytes += length) > 1024 * 1024) return fail("extension-budget");
       if (extension && index == 0) {
-        if ((label == 0xff && length != 11) || (label == 0xf9 && length != 4) ||
-            (label == 0x01 && length != 12)) return fail("extension-block-length");
-        loop = label == 0xff && (bytes.mid(start, length) == "NETSCAPE2.0" ||
-                                bytes.mid(start, length) == "ANIMEXTS1.0");
+        if ((label == 0xff && length != 11) || (label == 0xf9 && length != 4) || (label == 0x01 && length != 12))
+          return fail("extension-block-length");
+        loop =
+            label == 0xff && (bytes.mid(start, length) == "NETSCAPE2.0" || bytes.mid(start, length) == "ANIMEXTS1.0");
       } else if (loop) {
         if (index != 1 || length != 3 || byte(start) != 1) return fail("loop-block-length");
         const unsigned value = byte(start + 1) | (byte(start + 2) << 8);

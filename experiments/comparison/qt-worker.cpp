@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "gif-facts.h"
+
 #include <QBuffer>
 #include <QColorSpace>
 #include <QCoreApplication>
@@ -13,8 +15,6 @@
 #include <QSvgRenderer>
 #include <QXmlStreamReader>
 #include <QtEndian>
-
-#include "gif-facts.h"
 
 #include <atomic>
 #include <cstdio>
@@ -217,8 +217,7 @@ int main(int argc, char** argv) {
         }
       }
       comparison_load(session.get(), reinterpret_cast<const unsigned char*>(snapshot.constData()),
-                      size_t(snapshot.size()), request.value("capsule").toBool(),
-                      ignoreOrientation);
+                      size_t(snapshot.size()), request.value("capsule").toBool(), ignoreOrientation);
       auto control = bridgeControl(session.get());
       size_t length = 0;
       const auto* exif = comparison_result(session.get(), &length, true);
@@ -273,8 +272,8 @@ int main(int argc, char** argv) {
             image = image.scaled(bound, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         }
       }
-      for (const auto* key : {"source_width", "source_height", "oriented_width", "oriented_height",
-                              "orientation", "orientation_policy", "intrinsic_loop"})
+      for (const auto* key : {"source_width", "source_height", "oriented_width", "oriented_height", "orientation",
+                              "orientation_policy", "intrinsic_loop"})
         control[key] = inspection.value(key);
       send(control, image);
       continue;
@@ -350,8 +349,8 @@ int main(int argc, char** argv) {
            result.image);
     } else if (operation == "decode" || operation == "inspect" || operation == "metadata") {
       gif.reset();
-      const auto orientation = ignoreOrientation ? HolonightImages::OrientationPolicy::Ignore
-                                                 : HolonightImages::OrientationPolicy::Apply;
+      const auto orientation =
+          ignoreOrientation ? HolonightImages::OrientationPolicy::Ignore : HolonightImages::OrientationPolicy::Apply;
       if (operation == "metadata") {
         send({{"outcome", "metadata"}, {"metadata", facts(HolonightImages::readMetadata(buffer, limits, cancelled))}});
         continue;

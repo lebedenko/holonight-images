@@ -4,19 +4,22 @@
 #include <QCoreApplication>
 #include <QImageReader>
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <holonight_images/image.h>
 
 namespace Fuzz {
 inline void require(bool condition) {
-  if (!condition) std::abort();
+  if (!condition) {
+    std::abort();
+  }
 }
 inline void initialize() {
   static int argc = 1;
-  static char name[] = "images-fuzz";
-  static char* argv[] = {name, nullptr};
-  static QCoreApplication application(argc, argv);
+  static std::array name = std::to_array("images-fuzz");
+  static std::array<char*, 2> argv = {name.data(), nullptr};
+  static QCoreApplication application(argc, argv.data());
   QImageReader::setAllocationLimit(16);
 }
 // Mutate bytes directly: no control header hides image signatures from the mutator.
@@ -24,6 +27,8 @@ inline void initialize() {
 class Buffer final : public QBuffer {
  public:
   Buffer(QByteArray* bytes, int mode) : QBuffer(bytes), mode_(mode) { open(ReadOnly | Unbuffered); }
+  // The harness passes this flag directly to provider calls.
+  // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   std::atomic_bool cancelled{false};
   bool seek(qint64 offset) override {
     ++seeks_;
@@ -33,9 +38,13 @@ class Buffer final : public QBuffer {
  protected:
   qint64 readData(char* data, qint64 length) override {
     ++reads_;
-    if (mode_ == 1 && reads_ >= 2) return -1;
+    if (mode_ == 1 && reads_ >= 2) {
+      return -1;
+    }
     const auto count = QBuffer::readData(data, length);
-    if (mode_ == 3) cancelled.store(true);
+    if (mode_ == 3) {
+      cancelled.store(true);
+    }
     return count;
   }
 
