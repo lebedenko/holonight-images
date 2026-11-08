@@ -11,3 +11,32 @@ add_test(NAME installed-package COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CU
 add_executable(svg-without-image-plugin-test svg_without_image_plugin_test.cpp)
 target_link_libraries(svg-without-image-plugin-test PRIVATE HolonightImages::Images)
 add_test(NAME svg-without-image-plugin COMMAND svg-without-image-plugin-test)
+
+if(HOLONIGHT_IMAGES_ISOLATED)
+  add_executable(isolated-capture-test isolated_capture_test.cpp)
+  target_link_libraries(isolated-capture-test PRIVATE HolonightImages::Isolated)
+  add_test(NAME isolated-capture COMMAND isolated-capture-test)
+  add_executable(isolated-protocol-test isolated_protocol_test.cpp)
+  target_link_libraries(isolated-protocol-test PRIVATE HolonightImages::Isolated GTest::gtest_main)
+  add_test(NAME isolated-protocol COMMAND isolated-protocol-test)
+  if(HOLONIGHT_IMAGES_RUNTIME_BUNDLE)
+    add_test(NAME isolated-installed-package COMMAND ${CMAKE_COMMAND}
+      -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/isolated-consumer
+      -DPROVIDER_BUILD=${PROJECT_BINARY_DIR} -DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/isolated-package-test
+      -DFIXTURES=${CMAKE_CURRENT_BINARY_DIR}/fixtures -DRUN_RUNTIME=${HOLONIGHT_IMAGES_RUNTIME_TESTING} -P ${CMAKE_CURRENT_SOURCE_DIR}/isolated-package-test.cmake)
+  endif()
+endif()
+if(HOLONIGHT_IMAGES_ISOLATED)
+  add_executable(isolated-fault-helper isolated_fault_helper.cpp ../src/isolated/protocol.cpp)
+  target_link_libraries(isolated-fault-helper PRIVATE HolonightImages::Images)
+  add_executable(isolated-runtime-test isolated_runtime_test.cpp)
+  target_link_libraries(isolated-runtime-test PRIVATE HolonightImages::Isolated)
+  set(HOLONIGHT_IMAGES_FAULT_RUNTIME "" CACHE PATH "Explicitly prepared test-only fault runtime")
+  if(HOLONIGHT_IMAGES_RUNTIME_TESTING AND HOLONIGHT_IMAGES_FAULT_RUNTIME AND HOLONIGHT_IMAGES_RUNTIME_BUNDLE)
+    add_test(NAME isolated-namespace-denied COMMAND /usr/bin/bwrap --unshare-user --disable-userns
+      --ro-bind / / --proc /proc --dev-bind /dev /dev --setenv HN_TEST_NAMESPACE_DENIED 1
+      $<TARGET_FILE:isolated-runtime-test> ${HOLONIGHT_IMAGES_RUNTIME_BUNDLE} ${HOLONIGHT_IMAGES_FAULT_RUNTIME})
+    add_test(NAME isolated-runtime-faults COMMAND isolated-runtime-test
+      ${HOLONIGHT_IMAGES_RUNTIME_BUNDLE} ${HOLONIGHT_IMAGES_FAULT_RUNTIME})
+  endif()
+endif()

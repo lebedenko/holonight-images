@@ -47,3 +47,7 @@ tasks:
     desc: Container acceptance plus Release staging and runtime checks
     cmds:
     - python3 scripts/ci/container.py integration {{.CLI_ARGS}}
+  test:isolated:
+    desc: Native isolated runtime, installed-consumer and lifecycle acceptance (no deployment)
+    cmds:
+    - python3 scripts/test-isolated-runtime.py {{.CLI_ARGS}}

@@ -126,3 +126,44 @@ Qt treats image-element fragment hrefs as filenames rather than document-local r
 Data URIs must use the lowercase `data:` scheme and contain a decodable raster, preventing Qt's ordinary failed-data
 filename fallback. Fragment references in use/paint resources remain allowed. Embedded decode is subject to Qt's
 allocation ceiling and renderer resource checks, not the caller's final output-image budget.
+
+## Opt-in isolated raster client (Linux)
+
+`HolonightImages::Isolated` provides synchronous inspection, structured metadata and
+first-frame raster decoding using a fresh sandboxed Qt helper per call. See the
+[design and limits](docs/sdd/isolated-raster/DESIGN.md). Existing APIs and consumers
+are unchanged. SVG and animation sessions are excluded.
+
+Build and explicitly prepare a host-native runtime before staging (choose a **new**
+bundle output directory each time the helper changes):
+
+```sh
+cmake -S . -B build/isolated -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOLONIGHT_IMAGES_ISOLATED=ON
+cmake --build build/isolated
+python3 scripts/prepare-isolated-runtime.py --helper build/isolated/holonight-images-helper \
+  --plugins /usr/lib/qt6/plugins --output build/runtime-release
+cmake -S . -B build/isolated -DHOLONIGHT_IMAGES_RUNTIME_BUNDLE="$PWD/build/runtime-release"
+cmake --install build/isolated --prefix "$PWD/build/staged"
+cmake -S . -B build/isolated -DHOLONIGHT_IMAGES_RUNTIME_TESTING=ON
+ctest --test-dir build/isolated --output-on-failure
+```
+
+Consumers link `HolonightImages::Isolated`, include `holonight_images/isolated.h`,
+and construct `IsolatedClient` with the absolute staged
+`libexec/holonight-images/runtime` directory. Check `runtime == RuntimeStatus::Success`
+and `result` before examining the provider outcome. Missing/altered runtimes,
+namespace denial and infrastructure failures never fall back to in-process decoding.
+Runtime operations require bubblewrap, a user systemd manager and cgroup v2.
+
+For the complete native provider/installed-consumer/fault matrix, run
+`task test:isolated` (or `task test:isolated -- --build-type Release --build build/isolated-release`).
+This prepares unique production and test-only fault bundles in the ignored build
+tree. It requires access to the user session manager and unprivileged namespaces.
+Container acceptance builds and stages the opt-in package, but does not claim host
+namespace/cgroup runtime acceptance. The default `HOLONIGHT_IMAGES_RUNTIME_TESTING=OFF`
+still builds the separate installed consumer; `ON` also executes it.
+
+The installed package exports `HolonightImages_RUNTIME_DIRECTORY`, resolved relative
+to the selected package prefix, for consumers constructing an `IsolatedClient`.
+After staging or relocating the prefix, select the new package and pass this value
+explicitly. Consumer deployment defaults must not embed a temporary DESTDIR.

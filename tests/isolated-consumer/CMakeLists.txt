@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25)
+project(isolated-consumer LANGUAGES CXX)
+find_package(HolonightImages CONFIG REQUIRED)
+add_executable(isolated-consumer main.cpp)
+target_link_libraries(isolated-consumer PRIVATE HolonightImages::Isolated)
