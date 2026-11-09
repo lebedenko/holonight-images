@@ -1390,3 +1390,90 @@ universal error equivalence, concurrent-mutation protection, worthwhile savings
 or production readiness. A separate bounded performance experiment may now be
 considered for this same candidate; this result does not authorize production
 integration or generation reuse.
+
+## Bounded hash performance experiment (2026-11-09)
+
+**Worthwhile savings not demonstrated.** The private
+[`experiments/hash-performance`](../../../experiments/hash-performance/README.md)
+measured full `verifyRuntime()` calls against the preserved B2 runtime. This
+extends the correctness findings above without changing production validation,
+public APIs, installation or generation reuse. Generation reuse remains **no-go**.
+
+The fixed policy was recorded before sampling: three blocks, each with a fresh
+valid fixture copy shared by fresh baseline/candidate persistent processes, five
+excluded warm-up pairs and 50 measured pairs. Calls ran serially, alternating
+variant order each pair; blocks started baseline-first, candidate-first,
+baseline-first. All 150 measured validations per variant and 15 warm-ups per
+variant are retained. Timings are warm-cache, with no cache drops, CPU-setting
+changes, concurrent experiment workloads, outlier trimming, expanded budget or
+retry. `QElapsedTimer` surrounds the full call only; path conversion, descriptor
+inspection, startup and JSON serialization are outside that interval. There are
+no phase probes or per-file instrumentation.
+
+Every block and pooled results had to save at least **4 ms and 10%** at the
+median of paired differences, with candidate nearest-rank p95 no greater than
+105% of baseline p95. These are practical decision gates, not significance tests.
+
+| Block | Pairs | Baseline median / p95 ms | Candidate median / p95 ms | Median paired savings ms | Median paired savings % |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 50 | 41.851 / 42.804 | 40.685 / 41.247 | 1.158 | 2.758 |
+| 2 | 50 | 42.223 / 44.863 | 41.141 / 42.398 | 1.064 | 2.500 |
+| 3 | 50 | 42.380 / 44.169 | 41.482 / 42.630 | 1.027 | 2.480 |
+| Pooled | 150 | 42.101 / 43.932 | 41.071 / 42.345 | 1.114 | 2.654 |
+
+All blocks and pooled results missed both savings thresholds. All p95 gates
+passed. No qualification failures occurred. Paired savings are calculated per
+pair before taking medians, rather than by subtracting variant medians.
+
+### Qualification and evidence
+
+Installed QtCore package `6.12.0-3`, SHA-256 and build ID still match the reconciled
+identities above. The candidate header, exact overlay and relevant validation
+sources match the preserved correctness experiment; its unchanged 98 device
+cases were reused. Images HEAD `b420c4d61a2a83deb9a22bdd0936d8295fec8c7b` was archived
+once, and both Release executables used identical harness/build settings with
+host GCC `16.2.1 20260810` and Qt Core/Gui `6.12.0`. Review confirmed that only
+the existing candidate include and device-hashing expression changed; the open
+guard, full digest comparison and every other validation check remain intact.
+
+Before measurement, the ten existing validator cases each received a fresh copy
+per variant, and all 20 expected verdicts agreed. All case/block inventories and
+frozen before/after inventories match; metadata checks around calls and descriptor
+checks passed. Frozen payloads were never executed. All 12 command children and
+26 harness children exited zero, were reaped and had absent `/proc` entries;
+there was no trailing output or timeout.
+
+Host: `rog`, Intel Core i9-14900HX, x86_64 Linux `7.2.14-arch1-1`. Available load
+averages before/after were `1.96 1.86 1.68` / `2.33 1.96 1.72`. Host background
+activity was not controlled. Ignored Images `build/hash-performance-cyws85n4/`
+retains the fixed policy, executed tooling snapshot, commands, raw process output,
+parsed observations and expected verdicts, source archive/overlays, source and
+binary hashes, compiler/dependency identities, compile commands, fixture
+inventories, host context and cleanup records.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Policy | `376d8232f533f2006e0d5dbf809a5eaf2ac101ad55fb0ebc09be23504cf231cc` |
+| Source archive | `087c29e1c91a25034f65aca12742b60b961137f75e8ad579fd3a0ab6e24e6dce` |
+| Baseline executable | `ff371dae9d4ccb2f262bdcd6284b0052d5907765eb63af3746ee9b666a1d2346` |
+| Candidate executable | `8f0c1b4ba69ec5500e29907dec8aba3857192e3b62648cc7939507e12e48893c` |
+| Observations | `29a8109dec468841b6a756db5061d171e874ba9ed1a45b999db0ba1901735be9` |
+| Validator observations | `2ac2365efa82419cc2574cb9ec9ef30ab71a17a5f5d079c7c13febd42b7eeeed` |
+| Summary | `05cb0ccd236a51d5a57434e817008bc021575621f2fcbb327d83f378d88fe7e7` |
+
+Seven focused tests passed before native execution, covering pairing/accounting,
+warm-up exclusion, threshold boundaries, inconsistent blocks, p95 regression,
+strict parsing, verdict mismatch, process failure, trailing output and timeout
+cleanup with partial-output retention. Post-run review hardened the idle watchdog
+to reap/escalate independently of parent cleanup and added an idle-lifetime test;
+eight tests pass. `final-tooling/` and `post-run-review.json` preserve that change
+separately from the executed snapshot. It changes no measured code or decision;
+no native rerun was performed. Images and umbrella whitespace checks passed.
+The full preview matrix and installed-package suite were not run for this
+private experiment. No deployment, installation, commit, publication or pin
+update was performed; Grub was untouched.
+
+This result applies only to this host, fixture and warm-cache full-validation
+workload. It does not establish whole-preview savings, universal error equivalence
+or concurrent-mutation protection. It does not justify production integration
+under the agreed savings criterion; any integration remains a separate decision.
