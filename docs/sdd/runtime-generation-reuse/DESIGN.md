@@ -3,6 +3,8 @@
 Date: 2026-11-09. Status: explicit-refresh contract approved; **sealed-memfd
 feasibility probe stopped with no-go at the metadata immutability gate**.
 Metadata contract review complete: retain exact modes; no narrowing proposed.
+Static mechanism gate and portable FUSE follow-up complete: neither candidate qualifies.
+FUSE daemon bootstrap remains a concrete blocker; no metadata probe is ready.
 Retain full per-operation validation in production. An immutable snapshot remains
 a conditional design direction, not a qualified approach.
 No production code, public API, packaging, deployment or consumer behavior changes
@@ -491,6 +493,448 @@ Review verification: read current validator/launcher/gate code and preserved
 `provenance.json`/`results.json`; cross-check versioned primary sources; review
 both design documents and run whitespace checks. No probe, native launch,
 lifecycle test, build or package test was run for this documentation review.
+
+## Unprivileged storage static mechanism gate (2026-11-09)
+
+**Decision: neither candidate qualifies; retain the no-go.** Private tmpfs with
+read-only publication does not establish irrevocable authority removal against
+the same user. A sealed read-only image served through FUSE has useful immutable
+format properties, but its serving authority, metadata policy and launch transport
+are unresolved. This is a static rejection of qualification, not a claim that
+all possible unprivileged constructions are impossible. No narrower attacker or
+mode contract, new privileged broker, system-owned runtime installation, or
+process-wide consumer security changes are accepted. The search stops with these
+two candidates. No candidate-specific metadata probe is justified or authorized.
+
+### Evidence scope and host availability
+
+Read-only inspection reused `build/runtime-memfd-feasibility-eYAKqdW8/`
+`provenance.json` and `results.json`; the successful content-seal checks and failed
+exact-mode check were not rerun. Current package database entries confirm Linux
+`7.2.14.arch1-1`, bubblewrap `0.13.1-1`, systemd `262.1-1` and libfuse
+`3.18.3-1`. `/proc/config.gz` and the installed
+`/usr/lib/modules/7.2.14-arch1-1/build/.config` both report `CONFIG_USER_NS=y`,
+`CONFIG_TMPFS=y`, `CONFIG_TMPFS_POSIX_ACL=y`, `CONFIG_TMPFS_XATTR=y`,
+`CONFIG_FUSE_FS=y`, FUSE passthrough/io_uring enabled, and
+`CONFIG_LSM="landlock,lockdown,yama,integrity,bpf"`. Configuration availability
+is established; it does not establish active LSM policy or permission to mount.
+The installed headers omit `fs/namespace.c` and are not a full source audit.
+
+The review uses upstream stable **v7.2.14** sources below where retrievable,
+plus matching upstream bubblewrap/systemd/libfuse tags. The Arch package's exact
+patch set could not be verified: its versioned GitLab PKGBUILD was inaccessible
+through the source reader. Upstream equality to the deployed kernel/tools was not established; this is
+development-host provenance, not a portable acceptance requirement. FUSE device/control v7.2.14 sources were also unavailable
+through that reader; the explicitly marked v7.0 device reference is only a
+screening reference. SquashFUSE **0.6.1** is a versioned example, not an installed
+or selected dependency. Missing exact distribution patches alone do not block
+qualification. Require the semantic capabilities specified in the follow-up below;
+investigate a distribution patch only when a concrete difference affects one of
+those requirements. Unavailable source is not evidence of mechanism failure, and
+reference source behavior is not silently promoted to a deployed-host guarantee.
+
+`/dev/fuse`, `/usr/bin/squashfuse` and `/usr/bin/squashfuse_ll` are absent in the
+sandbox view, and `/var/lib/pacman/local/squashfuse*` has no entries. However,
+`/proc/self/mountinfo` shows a sandbox tmpfs mounted over `/dev`, above the host
+devtmpfs. `/proc/filesystems` lists `fuse`, `fuseblk`, `fusectl`; `/proc/misc`
+lists `229 fuse`; inherited mount records include `fuse.portal` and
+`fuse.gvfsd-fuse`. Thus **kernel FUSE support and existing mounts are established;
+host device-node availability/access is unresolved**, not disproved by sandbox
+absence. `/usr/bin/fusermount3` exists with a setuid bit in this view, but that
+neither proves usability nor authorizes a privileged mounting dependency. A
+qualifying construction would need direct unprivileged namespace mounting; a
+solution requiring a new privileged broker is excluded. No device was opened,
+package installed, module loaded, permission changed or host namespace entered.
+
+### Private tmpfs: read-only is not irreversible
+
+The considered construction creates a user namespace U and mount namespace M,
+mounts tmpfs owned by U, populates it, closes construction writers, makes the
+filesystem read-only, validates, then publishes handles. Mount-local read-only
+binds leave other mounts writable. Filesystem-wide `SB_RDONLY` is stronger but
+reversible by its administrator. Upstream
+[v7.2.14 mount code](https://raw.githubusercontent.com/gregkh/linux/v7.2.14/fs/namespace.c)
+separates bind-remount flags from superblock remount authority and checks
+`CAP_SYS_ADMIN` in the superblock's user namespace. Locks on mounts copied into
+less-privileged namespaces do not remove authority over the original mount.
+
+A successful non-forced read-only transition must account for existing writers;
+[v7.2.14 superblock reconfiguration](https://raw.githubusercontent.com/gregkh/linux/v7.2.14/fs/super.c)
+checks outstanding write access. Closing only the builder's descriptors does not
+close attacker aliases or shared writable mappings acquired during construction.
+Treat a failed transition as failure, never force it or publish a read-only bind
+instead. Even a clean transition does not seal tmpfs against a later read-write
+remount. Private propagation prevents propagation accidents, not inode mutation.
+
+The decisive authority counterexample does not require parent-memory control.
+[v7.2.14 capability evaluation](https://raw.githubusercontent.com/gregkh/linux/v7.2.14/security/commoncap.c)
+grants capabilities over U to a process in U's parent namespace whose effective
+UID equals U's owner. A separate same-user attacker can satisfy that condition
+after the builder has dropped every capability. Given accessible namespace
+handles, a single-threaded attacker with unshared filesystem state can enter U:
+[v7.2.14 `userns_install` / `set_cred_user_ns`](https://raw.githubusercontent.com/gregkh/linux/v7.2.14/kernel/user_namespace.c)
+checks authority in the target and installs full namespace capability sets.
+The prohibition on reentering one's *current* namespace does not bar an attacker
+starting in the parent. It can then satisfy M's namespace-entry checks, regain
+remount authority and change bytes/modes, or overmount names used for later opens.
+This contradicts the proposed inference that capability dropping freezes storage.
+
+Accessible `/proc/<holder>/ns/{user,mnt}`, retained namespace FDs and previously
+opened aliases must all be included. A normal proc denial is not a revocation of
+old handles. Keeping a namespace worker non-dumpable, destroying M after transfer,
+or retaining only detached mounts would require an explicit proof that no
+namespace or mount authority remains reachable throughout construction and use;
+none is established here. Moving the owner to another UID requires authority
+outside the selected boundary. Broadly hiding the consumer's proc descriptors
+would also change the existing parent security contract and legitimate access.
+
+Ownership and security metadata are separate from mode bits: user-namespace UID/GID
+mapping is not ownership by a different trusted principal. Eligible chown/chgrp,
+ACL and xattr operations require their own policy. The enabled tmpfs ACL/xattr
+configuration rules out assuming they are absent. Exact `0644`/`0755` does not
+prove absence of file capabilities, inherited ACLs or LSM/IMA effects. Once
+read-write authority returns, a read-only publication provides no durable
+metadata protection. No effective pre-gate protection point is established.
+
+### Sealed image through FUSE: immutable input is not the whole service
+
+The alternative would construct a bounded read-only image containing the validated
+inventory and exact metadata, seal its backing bytes/length before validation,
+and have a trusted daemon serve only that object. Changing the backing memfd's
+mode would not change the modes encoded inside the image. This is a meaningful
+difference from executing a memfd inode directly, not a reversal of that no-go.
+
+[SquashFUSE 0.6.1 operations](https://raw.githubusercontent.com/vasi/squashfuse/0.6.1/ll_main.c)
+register reads/getattr/getxattr but no setattr, write or setxattr handlers;
+[its stat conversion](https://raw.githubusercontent.com/vasi/squashfuse/0.6.1/stat.c)
+reads modes and IDs from image metadata. Matching installed-version
+[libfuse 3.18.3 dispatch](https://raw.githubusercontent.com/libfuse/libfuse/fuse-3.18.3/lib/fuse_lowlevel.c)
+rejects unsupported setattr operations. These establish a read-only implementation
+surface for this example, not end-to-end immunity. Image construction must reject
+special bits and define IDs, ACLs, `security.capability` and security labels
+explicitly; blindly copying image xattrs would preserve unwanted security effects.
+Kernel permission checks, FUSE mount options and LSM policy still govern execution.
+
+The daemon is an additional trusted parser and response producer. Its image FD,
+connection endpoints, namespace handles and any transfer socket must have explicit
+owners and lifetimes. Seals protect the pinned image contents even through proc
+reopens, but do not authenticate FUSE replies. A duplicated *connected open file
+description* is different from reopening `/proc/<daemon>/fd/N`: do not assert
+that reopening `/dev/fuse` automatically joins the daemon's connection.
+The older [v7.0 FUSE device code](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/fuse/dev.c)
+associates connection state with file-private data and supports cloning from an
+existing connected FD. Denial of connection acquisition, cloning, reply injection and retained
+pre-publication aliases remains a semantic requirement. The follow-up below
+restricts the proposed service to ordinary FUSE read/write transport, without
+negotiated passthrough or io_uring. This review claims no demonstrated FUSE
+connection exploit. A daemon-specific isolation design might help, but there is
+no complete bootstrap, FD-transfer or access proof to select here; the exclusion
+of hostile parent-memory control is not a blanket exclusion of attacks on a new
+daemon or its proc-accessible resources.
+
+[v7.2.14 FUSE mount code](https://raw.githubusercontent.com/gregkh/linux/v7.2.14/fs/fuse/inode.c)
+binds mounts to a connection and user namespace. A sealed image does not protect
+an ordinary mountpoint name against unmount/replacement. A private namespace
+retains the tmpfs authority concern; pinning every leaf before publication could
+avoid later pathname substitution, but its access/transport is unqualified.
+Daemon termination, connection abort and unmount must fail closed without a source
+fallback. They need not mutate bytes to defeat legitimate consumption; bounded
+failure and cleanup, rather than resistance to all same-user denial of service,
+is the requirement. Connection-control permissions are unresolved on this host.
+
+### Legitimate object access across the launch chain
+
+The following traces both candidates; it describes missing obligations, not an
+implemented construction. Sources are current `src/isolated/runtime.cpp`,
+`helper.cpp`, [systemd v262.1 scope execution](https://raw.githubusercontent.com/systemd/systemd/v262.1/src/run/run.c)
+and [bubblewrap v0.13.1 setup](https://raw.githubusercontent.com/containers/bubblewrap/v0.13.1/bubblewrap.c).
+
+| Stage | Private tmpfs | Sealed image / FUSE |
+| --- | --- | --- |
+| Owner before QProcess | Builder in U/M retains mount and file handles; parent needs a transferred root or individual leaf FDs. Host source path cannot name a private mount. | Daemon retains image and connection FDs; parent needs pinned served objects, not merely the image FD or a replaceable mountpoint path. |
+| QProcess → systemd scope | Current QProcess closes FDs ≥3; no generation FD survives by inheritance. Parent-proc paths require parent-held stable FDs and proc permission. | Same constraint. The daemon must outlive the scope; its descriptors are not automatically passed to the launcher. |
+| Scope → unsandboxed gate | Scope execution uses `execvpe` in systemd-run; it does not enter the builder's M. Gate must resolve a pinned helper via a proven proc path or redesigned FD transport. | Gate must execute the pinned served helper, not the image and not a remountable public pathname. Ordinary FUSE access as the mount owner does not prove namespace-transition access. |
+| Gate → bubblewrap | Gate waits for G then `execv`s bwrap; protection must already cover the first gate exec. Host ELF interpreter/dependencies remain trusted infrastructure. | Same pre-gate requirement; daemon/image/metadata protection must already be effective. Waiting for G cannot repair an earlier substitution. |
+| Bubblewrap setup | Bwrap constructs namespaces/new root, uses the old root for source access and a temporary proc bind for FD paths, then detaches the old root. Parent-proc reachability across PID/user transitions cannot be assumed. | Same lookup obligations, plus FUSE credential/user-namespace access checks. A readable host mount is not evidence of readable bind sources after transition. |
+| Sandbox interpreter/libraries/plugins | Every inventory leaf must already be bound from its pinned object. Later `/usr/...` opens must resolve those objects without construction handles or host proc exposure. | Binds pin served inodes/mounts, but reads still depend on the daemon/connection and stable replies. No image or connection FD belongs in the worker. |
+
+Neither candidate supplies the required descriptor survival/reopen proof. Passing
+FDs explicitly would require changes to the current close policy and audits of
+all subsequent execs. Using parent-proc paths avoids inheritance only if both
+legitimate access and same-user mutation resistance hold; neither is established.
+Changing only sandbox bindings leaves the unsandboxed gate unprotected.
+
+### Comparison and stopping decision
+
+**Established** means the specific stated fact has evidence, **contradicted**
+means the proposed guarantee has a source-level counterexample, and **unresolved**
+means evidence is missing. Component facts are not whole-candidate passes.
+
+| Required property | Private tmpfs | Sealed image / FUSE |
+| --- | --- | --- |
+| Immutable content | **Contradicted** for accessible U/M: remount restores write authority. **Established** distinction between mount-local and filesystem-wide RO (mount/superblock sources). | **Established** backing-byte sealing primitive (preserved probe). **Unresolved** immutable served bytes: daemon/connection binding is additional. |
+| Exact modes | **Contradicted** as a durable guarantee when U/M authority can be regained. | **Established** image-derived modes and missing mutation handlers in the versioned example. **Unresolved** host serving/transport guarantee. |
+| Ownership, ACLs, capabilities, labels | **Unresolved** qualified policy; ACL/xattr support is **established** by config. Reversible RO is insufficient. | **Unresolved** image encoding/ID overrides, ACL/xattr policy, effective labels and exec effects; mode preservation alone is insufficient. |
+| Namespace authority and replacement | **Contradicted** capability-drop argument (commoncap/userns); inaccessible-authority construction **unresolved**. | **Unresolved** unprivileged mount ownership, pinned publication and substitution resistance; sealed storage does not protect mount names. |
+| Same-user proc and old aliases | **Contradicted** reliance on private names/dropped caps with accessible namespace handles. **Unresolved** complete alias elimination. | **Unresolved** connected-FD isolation and old aliases; image proc reopens preserve sealed bytes, but do not prove serving isolation. |
+| Legitimate launch access, including gate | **Unresolved** transfer/reopen and namespace traversal at each stage above. | **Unresolved** same transport plus FUSE credential checks and daemon availability. |
+| Dependencies/version match | **Established** development-host tmpfs/userns config; deployment policy must permit required operations. | **Established** development-host kernel support/libfuse package; **unresolved** device access and adapted image/mount tooling. Exact distribution patch identity is not a requirement. No new privileged helper accepted. |
+| Resources and lifetime | **Unresolved** bounded setup/cleanup: tmpfs pages, inode metadata, writers, mount/ns/file FDs and any keeper must fit generation caps. | **Unresolved** image plus decoded page cache, daemon RSS/decompression caches, connection queues, FDs and mount lifetime; compressed size is not a memory bound. |
+
+A tmpfs lease would have to retain its pinned mounts/files until terminal operation
+cleanup, then release all handles and reap any keeper. FUSE additionally needs
+the daemon alive until the last read/mapping is gone, followed by bounded unmount,
+connection shutdown, child reaping and image release. Failed construction needs
+the same accounting without publication. Neither has a qualified teardown that
+fits the existing generation limits/deadlines; operation scopes do not account
+for an owner-lived daemon. No teardown sequence is presented as executable.
+
+The static stop gate therefore remains closed. There is **no selected construction
+or publication sequence and no candidate ready for a metadata-only probe**. The
+prior ordered experiment gates remain conditional requirements only; they do not
+authorize proceeding on this result. Any later qualifying specification must cover
+permission removal/addition, X and special bits, eligible ownership changes,
+ACL/xattr operations, proc and old aliases, namespace entry/remount, legitimate
+access to the same published objects, exact metadata/content identity, bounded
+failure, reaping and complete descriptor/storage cleanup. Unauthorized mutation,
+unexplained security effects or broken legitimate access must stop immediately.
+
+Acquisition source modes and inventory checks, location-independent content
+identity and approved explicit-refresh ordering remain unchanged. Verification
+for this gate was read-only code/config/package/evidence inspection, versioned
+primary-source review, document consistency review and whitespace checks only.
+No builds, tests, probe reruns, mounts, native launches, lifecycle experiments,
+deployment, commits or submodule updates were performed.
+
+## Portable FUSE qualification follow-up (2026-11-09)
+
+**Decision: stop this candidate at static qualification; retain no-go.** This is
+one assessment of SquashFUSE 0.6.1 adapted to serve a sealed image through a
+dedicated unprivileged daemon, with every served leaf pinned by the parent.
+It does not reopen the storage search. The proposed ordering below exposes the
+blockers; it is not an approved construction or an executable probe plan.
+
+### Contract and evidence boundary
+
+Decoder containment limits what a compromised image helper can do after entering
+bubblewrap. Runtime replacement protection must also hold against an independent
+same-user process before the unsandboxed gate executes, throughout construction,
+and while any lease exists. The new FUSE daemon is trusted code whose protection
+must be established; attacks on its memory, proc entries and descriptors are not
+excluded by the existing exclusion of hostile parent-memory control. Same-user
+signals, connection abort and resource exhaustion may cause bounded failure;
+they may never cause substituted successful execution or source-path fallback.
+
+Portable support requires Linux content seals, unprivileged user/mount namespace
+creation and UID/GID mapping, accessible `/dev/fuse`, direct namespace mounting
+of `fuse`, ordinary FUSE request/reply transport, immutable served metadata, and
+proc/descriptor access compatible with the entire launcher chain. Require
+`default_permissions`, `nosuid`, `nodev`, executable regular files, private mount
+propagation, and no negotiated passthrough, io_uring or writable backing service.
+Required mount capabilities are `CAP_SYS_ADMIN` in the new mount namespace's
+owning user namespace, not host-root privilege. LSM policy must permit legitimate
+execution without unexpected privilege or label transitions. Unsupported policy
+fails closed. No setuid mounting helper or new broker is selected.
+
+The earlier package/config observations are development-host evidence only.
+Upstream source demonstrates mechanisms and counterexamples, not a mandatory
+kernel release or distribution. A source fetch failure (including the image
+reader's `fs.c`/`file.c` in this follow-up) leaves the affected trace incomplete;
+it is not a failed syscall. Neither unavailable exact patches nor absence of
+`/dev/fuse` in this sandbox disqualifies portable FUSE by itself.
+
+### 1. Daemon bootstrap, credentials and connection authority
+
+The concrete starting sequence would capture and seal the image in the trusted
+parent, start a dedicated child, protect that child, give it the sealed image,
+create U/M, directly mount FUSE, open every served leaf, transfer those leaf FDs
+to the parent, validate through them, then publish. Only the daemon would retain
+the image and connected `/dev/fuse` open file description; the parent would keep
+served-file FDs and bounded lifecycle/control handles, never the connection FD.
+The child would retain the caller's host UID/GID, map only those IDs into U,
+deny supplementary-group changes for the mapping, and drop namespace capabilities
+after setup. Neither UID 0 inside U nor a capability drop creates another trusted
+host principal.
+
+This sequence has two concrete protection failures:
+
+- **Daemon in U:** non-dumpability alone is insufficient. A same-UID process in
+  U's parent namespace has capabilities in U, including `CAP_SYS_PTRACE`.
+  Ptrace's non-dumpable check permits that capability. Additional LSM denial is
+  not implied by private mount propagation or capability dropping. This follows
+  from [user-namespace capability rules](https://man7.org/linux/man-pages/man7/user_namespaces.7.html)
+  and [ptrace access checks](https://man7.org/linux/man-pages/man2/ptrace.2.html).
+  Namespace entry is not needed to gain this authority over the daemon.
+- **Daemon retained in the original user namespace:** setting
+  `PR_SET_DUMPABLE=0` there can deny later ordinary same-user ptrace/proc access,
+  but only after that instruction. A normal child startup from a dumpable parent
+  leaves an earlier attach window; ordinary exec also resets dumpability.
+  Calling prctl in `main`, before opening the connection, does not prove the
+  child's code was not already modified to leak it or forge replies. See
+  [dumpability](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html)
+  and [exec attributes](https://man7.org/linux/man-pages/man2/execve.2.html).
+  This is a counterexample on permitted systems allowing same-user attach, not
+  a claim that this development host was exploited. A protected-from-birth spawn
+  or independently enforced access policy is missing. Temporarily hardening the
+  parent, requiring stronger host policy, or excluding daemon attacks cannot be
+  silently added to this contract.
+
+Separating an original-namespace daemon from a mount child does not settle this:
+the mount child still receives connection authority during setup, and needs the
+same no-alias proof. A proposed transfer would use a precreated private socketpair,
+`SCM_RIGHTS`, bounded message/FD counts, an expected child identity and generation
+nonce, rejecting all unexpected messages. Same UID or a filesystem socket name
+alone cannot authenticate a peer against this attacker. Even identity checks do
+not authenticate a compromised expected child. Endpoint and connection duplicates
+obtained earlier must be excluded, not merely closed in cooperating processes.
+
+[The FUSE device implementation](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/fuse/dev.c)
+associates requests/replies with connected file-private state and supports clone
+from an existing connected FD. Reopening the device through proc is not itself
+proof of joining that connection. Conversely, an actual duplicated connected
+open file description is serving authority. No such FD may pass through an
+unprotected process or remain in an inherited socket queue. Proc denial does not
+revoke existing aliases. **Daemon-local protection as proposed is contradicted;
+a complete protected bootstrap remains unresolved under the allowed boundary.**
+
+### 2. Served content and security metadata
+
+The sealed image is input to a parser, not a kernel-authenticated response stream.
+[SquashFUSE reads](https://raw.githubusercontent.com/vasi/squashfuse/0.6.1/ll.c)
+use a decoded inode in the open handle, call `sqfs_read_range`, and return a
+buffer with `fuse_reply_buf`; getattr uses the image inode's stat conversion.
+The trace establishes where trusted userspace replies enter FUSE. The full
+bounded decompressor/cache trace is incomplete. A compromised daemon could reply
+with different bytes or attributes while the image seals remain intact.
+
+The required adaptation must take an already sealed FD rather than reopen a
+mutable image name; reject unsupported image features, links, special files and
+extra inventory; preserve source-mode validation and encode exact 0644/0755 files;
+and encode fixed mapped UID/GID values without CLI ownership overrides.
+[Stat conversion](https://raw.githubusercontent.com/vasi/squashfuse/0.6.1/stat.c)
+otherwise permits UID/GID overrides. Kernel FUSE converts reply IDs in the
+connection's user namespace, so validation must compare resulting host IDs as
+well as image IDs. Directory metadata must be fixed and bounded too.
+
+Define this candidate's image policy as **no xattrs**: no access/default ACLs,
+`security.capability`, image-supplied security/IMA labels, or opaque user/trusted
+attributes. The builder must omit them, the frozen-image validator reject them,
+and the adapted daemon suppress xattr enumeration and return absence for reads;
+all mutation requests must fail. Do not negotiate POSIX ACL support. This is a
+required adaptation, not behavior claimed for stock SquashFUSE, which registers
+xattr readers. Kernel/LSM-generated labels and mount policy remain separate:
+absence of image labels does not establish absence of execution effects.
+
+Before publishing or executing the gate, validation must cover the entire served
+inventory's bytes, types, sizes, exact modes, mapped ownership and security policy
+through the same pinned objects that launch will use. `nosuid` is defense in depth,
+not a replacement for rejecting special bits or capabilities. The gate's host
+loader/dependencies remain the already trusted host base. **Read-only handlers
+and image-derived metadata are established component facts; immutable responses
+and pre-gate security policy enforcement are unresolved.**
+
+### 3. Namespace authority and pinned publication
+
+Assume the attacker can obtain U/M handles, including old aliases, enter the
+namespaces with the required setns prerequisites, remount and replace mountpoint
+names. The tmpfs authority finding remains valid. For FUSE, removing a read-only
+mount flag does not add write/setattr handlers to an honest daemon. A pinned leaf
+FD retains its original mount/dentry; subsequent overmounts do not redirect that
+object. Pinning only the root and resolving child names later is insufficient.
+
+Every leaf must be opened before publication and validated after transfer; the
+parent must retain the FDs without number reuse until all leases drain. Reopen
+only those proc FD links, never the public mountpoint. This establishes the
+object-pinning argument against later pathname replacement, conditional on
+correct initial acquisition and transport. It does not prevent forged daemon
+responses, malicious initial transfers, connection abort, or changes to effective
+mount access flags. Remount authority is not automatically a connection FD, but
+the bootstrap above fails to isolate the latter. **The pinning primitive is
+established; complete namespace/connection substitution resistance is unresolved.**
+
+### 4. Legitimate access without changing descriptor closing
+
+The selected transport proposal is parent-proc reopening, preserving the existing
+QProcess policy that closes FDs from 3 upward. No inheritance is claimed:
+
+| Step | Required access and remaining obligation |
+| --- | --- |
+| Parent → QProcess → systemd scope | Parent keeps each leaf FD alive. Arguments contain `/proc/<parent-pid>/fd/<leaf-fd>`. QProcess closes child copies; systemd-run's scope exec must retain the argument and the PID/proc view needed to resolve it. |
+| Scope → gate | Exec the pinned helper proc path; verify access with actual launcher credentials before claiming qualification. Gate ELF interpreter and host dependencies remain trusted host paths. No lookup of the runtime source tree is allowed. |
+| Gate → bubblewrap | Gate passes the pinned source paths and waits for G as today. Its exec of bwrap supplies no generation FD. Protection must already have held at gate exec. |
+| Bubblewrap setup | Each source must reopen the parent-held leaf through the old-root/proc view while bwrap changes user, mount and PID namespaces. A namespace transition must not make proc or FUSE permission checks fail. |
+| Interpreter, libraries, plugins | Bind every leaf to its manifest destination before detaching the old root; subsequent sandbox opens resolve those bind mounts. Worker receives neither image nor connection nor parent control sockets. Reads and faults still require the daemon. |
+
+[Kernel FUSE access checks](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/fuse/dir.c)
+compare mount-owner credentials when `allow_other` is off; `allow_other` instead
+checks membership in the connection user namespace or its descendants. It is
+not a blanket fix for an ancestor-namespace parent. Same mapped numeric UID alone
+is not a transport proof. Exact real/effective/saved IDs and namespace context at
+each reopen matter. Parent-proc reopening avoids changing parent security, but
+also lets attackers obtain served-file aliases: rejecting their mutations must
+be an inode/service property. **Existing inheritance is contradicted by current
+code; the proposed reopening chain remains unresolved.** No transport change is
+implemented, and a mountpoint-path fallback is forbidden.
+
+### 5. Mount dependencies, bounds and teardown
+
+[Kernel FUSE registration](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/fuse/inode.c)
+permits user-namespace mounting (`FS_USERNS_MOUNT`). A prospective direct path
+opens accessible `/dev/fuse`, creates U/M with the caller's ID mapping, and mounts
+`fuse` using that connection FD and explicit root mode/user/group options. This
+requires namespace-local mount authority and host policy/device access, not a
+new privileged helper. The primitive is established; the protected mount/transfer
+implementation is not. Stock SquashFUSE is not a drop-in solution: its
+[entry point](https://raw.githubusercontent.com/vasi/squashfuse/0.6.1/ll_main.c)
+uses libfuse setup and can invoke fusermount3 on shutdown. An adaptation must
+replace mount/daemonization/shutdown handling, retain parent reaping ownership,
+and disable idle unmount while leases exist. It also needs a bounded image writer
+and FD-based reader; neither is supplied or installed by this assessment.
+
+The 128-file, 128-MiB payload and 256-FD caps remain unchanged, with at most one
+active, one retired and one building generation. Count descriptors across parent,
+daemon, mount child, transfer queues and temporary copies, not just the parent's
+final leaf table. Account separately for encoded image storage (including metadata),
+uncompressed payload pages, daemon executable/RSS, decompression caches, request
+buffers, kernel page/inode caches and FUSE queues. Image compression does not bound
+these. The current 384-MiB aggregate is a payload ceiling, not an all-in memory
+allowance; the per-operation 2-GiB scope does not contain an owner-lived daemon.
+No enforceable aggregate overhead budget or bounded request/cache configuration
+has been demonstrated. The reference read handler allocates per-request buffers;
+thread/request concurrency and attacker-generated reads also need bounds.
+
+Required lifetime order is: reserve resources before construction; abandon and
+reap on setup failure without publishing; retain daemon/image/leaf handles through
+all lease terminal cleanup; on retirement admit no new leases; after drain close
+leaf/bind users, detach/unmount in the owning namespace, terminate the connection,
+stop and reap daemon/mount children, close control/namespace/image FDs and verify
+storage release. Failure or daemon death revokes new acquisitions and fails live
+operations without fallback. A stuck request requires bounded abort and cleanup;
+SIGSTOP, queued work and lingering mappings must not make shutdown indefinite.
+Lazy unmount alone does not release these resources. The proposed 15-second setup
+and existing five-second operation cleanup budgets are not proofs of daemon
+shutdown/reaping bounds. **Dependencies and lifetime are unresolved as a whole.**
+
+### Obligation decisions and stopping point
+
+| Obligation | Classification | Decisive evidence or missing proof |
+| --- | --- | --- |
+| Daemon/connection protection | **Contradicted** for daemon-local non-dumpability as sufficient; protected bootstrap **unresolved** | Namespace-owner ptrace authority; pre-protection child startup; old connection/socket aliases are not revoked. |
+| Immutable served objects | **Unresolved** | Seals and read-only handlers established; trusted replies, adapted metadata policy and effective pre-gate labels not established. |
+| Namespace authority/substitution | **Unresolved** overall | Leaf pinning defeats later name replacement; initial transfer, serving authority and effective mount policy remain open. |
+| Legitimate launch access | **Unresolved** | Existing FD inheritance contradicted; proc reopening across the full launch chain not established. |
+| Dependencies/lifetime | **Unresolved** | Unprivileged mount primitive established; protected direct mount path, bounded overhead/I/O and complete teardown missing. |
+
+This is a specific stop on the proposed construction, not a proof that every
+FUSE design is impossible. Resolving daemon bootstrap without changing the parent
+security contract is prerequisite to spending effort on the remaining adaptation,
+access and resource obligations. Missing distribution sources are not the reason
+for this decision. No exact publication sequence qualifies and no metadata-only
+probe is ready or authorized. The previously listed mutation/alias/access/cleanup
+acceptance cases remain conditional; do not launch them on this static result.
+The sealed-memfd no-go, tmpfs authority finding, exact-mode contract and explicit
+refresh ordering are unchanged. Verification is source/evidence review, document
+consistency review and whitespace checks only, with no native experiment.
 
 ## Required future acceptance cases
 
