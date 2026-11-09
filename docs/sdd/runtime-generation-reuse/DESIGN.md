@@ -968,3 +968,88 @@ reuses that evidence and adds source/document review and whitespace checks only.
 Provider CTest and installed-package execution are deferred because the
 storage prerequisite failed and no production executable or installation behavior
 changed.
+
+## Full per-operation validation profile (2026-11-09)
+
+**Retain the existing validator unchanged. This investigation did not establish a
+worthwhile optimization preserving every check. Generation reuse remains no-go.**
+The bounded run identifies the dominant cost, but does not qualify a faster
+implementation or a storage mechanism.
+
+Private tooling is in [`experiments/runtime-profile`](../../../experiments/runtime-profile/README.md).
+Evidence is in ignored Images `build/runtime-profile-nodkmzws/`: identical archived
+source, private baseline/instrumented builds, overlay patches, compiler commands,
+provenance, raw wire/parsed observations, before/after inventories, child cleanup
+records, `summary.json` and `verification.json`. Images source revision is
+`c4db68c42207a43cffc71c80189278433950a13f`. Both builds use host GCC 16.2.1,
+Qt Core/Gui 6.12.0 and Release `-O3 -DNDEBUG -std=gnu++23` on Linux
+7.2.14-arch1-1 x86_64. Binary SHA-256 values are:
+
+- Baseline: `68503399d90b07a3f0155a7ab4f40110c29dbdfbc79d440843a338125c3550d3`.
+- Instrumented: `8b991d0861f4a7f1a189c86ce9f594d46ef9f839640ff8454d82b4e2da1dd32b`.
+
+The preserved B2 runtime's 60 payloads (87,198,752 bytes) plus manifest matched
+its preserved inventory before copying. Fresh disposable copies preserved modes;
+no frozen payload was executed or modified. Both variants called the existing
+internal `verifyRuntime()` only, without launching decoders, scopes or sandboxes.
+The overlay adds buffered timing boundaries while preserving validation predicates,
+short-circuit ordering, required entries and inventory traversal. Production
+sources and public APIs are unchanged.
+
+All ten correctness cases agreed with expected results in both variants: valid
+accepted; malformed manifest, duplicate path, missing required entry, extra entry,
+same-size byte corruption, truncation, incorrect mode, special mode and substituted
+leaf symlink rejected. Each case used a separate disposable fixture so faults did
+not carry into subsequent cases. Seven focused accounting tests passed before
+native measurement, covering missing/truncated telemetry, rejection, phase
+coverage, descriptor leaks, timeout/reaping and overhead classification.
+
+Five warm-ups per variant were excluded. Then 100 validations per variant ran
+sequentially in alternating-order pairs, with one persistent process per variant.
+Startup and telemetry serialization are outside validation timing. Each harness
+was bounded to 60 seconds, with no retry or experiment expansion. There were no
+failures, rejected measured calls or missing observations. These are warm-cache
+measurements, not cold-storage or whole-preview results.
+
+| Observation | Samples | Median (ms) | P95 (ms, nearest rank) |
+| --- | ---: | ---: | ---: |
+| Baseline total | 100 | 42.457153 | 42.886367 |
+| Instrumented total | 100 | 42.759970 | 43.195639 |
+| Manifest load/parse and initial checks | 100 | 0.047801 | 0.056036 |
+| Record/metadata checks and loop bookkeeping | 100 | 0.326227 | 0.351426 |
+| File open and QFile/hash construction | 100 | 1.345922 | 1.390914 |
+| Combined read/hash and digest comparison | 100 | 40.893586 | 41.284570 |
+| Bind-list construction | 100 | 0.013407 | 0.015676 |
+| Required-entry checks | 100 | 0.000608 | 0.000780 |
+| Inventory traversal and final local cleanup | 100 | 0.127224 | 0.141107 |
+
+Instrumented median total is **0.713% higher** than baseline, within the 10%
+material-perturbation gate. Median per-sample phase coverage is **99.973%**;
+recorder bookkeeping and outer call overhead account for the unassigned interval.
+Baseline phase observations remain missing, not zero. The raw report retains
+per-file bytes and timings: each of the 60 files has 100 open/read-hash/finish
+observations. Descriptor counts remained five before and after every call.
+All four correctness/measurement harness children were terminated and reaped with
+no trailing telemetry. Frozen and copied inventories matched afterward.
+
+The combined read/hash interval is **95.610% of instrumented total** at the median
+of per-call fractions. The largest individual interval is the 33,112,920-byte
+`libicudata.so.78`, with a 15.339065-ms median combined read/hash duration. This
+supports attribution to processing payload bytes, but `addData(QIODevice*)`
+combines reading and hashing; it does not isolate I/O, SHA-256 computation or a
+specific avoidable inefficiency. Open timing also includes object construction.
+Metadata includes loop/destructor bookkeeping. No phase is a pure syscall cost.
+
+This single host/fixture run does not establish cold-cache behavior, concurrency,
+a race defense, or end-to-end savings. No new phase timing is subtracted from the
+historical **47.1106485-ms** Experiment 0 median, which remains intact. Medians
+are not additive, and the earlier workload and this validation-only harness are
+different experiments. The **single next-step recommendation is to retain full
+per-operation validation unchanged**: no measured cost here maps to a demonstrated
+worthwhile change preserving manifest, inventory, modes, size and SHA-256 checks.
+No caching, skipped hashes, weaker metadata, storage search, parent-security or
+freshness changes are proposed. Verification comprised focused tool tests, private
+native builds, agreement checks, bounded measurements, evidence review and whitespace
+checks; the full preview matrix and installed-package suite were not rerun because
+production and installation behavior did not change. No deployment, publication,
+commit or pin update was performed.
