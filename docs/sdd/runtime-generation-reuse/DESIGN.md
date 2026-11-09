@@ -1477,3 +1477,125 @@ This result applies only to this host, fixture and warm-cache full-validation
 workload. It does not establish whole-preview savings, universal error equivalence
 or concurrent-mutation protection. It does not justify production integration
 under the agreed savings criterion; any integration remains a separate decision.
+
+
+## Hash candidate closure and next-target evidence review (2026-11-09)
+
+**Close the 64 KiB hash candidate without production integration.** Read-only
+checks against the preserved policy, observations and summary above confirmed
+three complete blocks, 150 measured validations per variant and 15 excluded
+warm-ups per variant. Recomputed paired medians are **1.1138225 ms / 2.6540157%**
+pooled (rounded 1.114 ms / 2.654%). Every block and pooled result misses both
+4-ms/10% savings gates; all p95 gates pass. The recorded artifact hashes match.
+Retain the 98 device pairs and ten validator cases as bounded correctness
+agreement, not universal error equivalence or concurrent-mutation protection.
+No hash-buffer tuning follow-up is selected.
+
+### Evidence checked and cost comparison
+
+This review reads the existing umbrella `build/preview-iteration-m9uucbpj/`
+records without regenerating them. The independent validator script matches the
+hash in `validation.json`. The audit's tool, scheduler/diagnostic provenance,
+A/B2/D2 inventory, executable, lifecycle-probe and fixture hashes match; D2's
+recorded overlays and archived Images source also match. The preserved Images
+overlay is `55248f990835c73fabf588d86d2e50810af9a419d503cfaaff65511cf9db984d`.
+The historical acceptance-prefix-only install-manifest exception remains intact.
+This is a targeted identity check, not a new full package acceptance audit.
+
+Child reports agree with the parent summary. Retained attempt records confirm
+280 attribution cases / 696 operations, 84 resource cases / 220 operations and
+600 scheduler batches. Recalculation from recorded operation intervals reproduces
+parent and helper medians; scheduler samples reproduce median and nearest-rank
+p95 for all six groups of 100. The lifecycle file has 3,000 successful operations
+in 1,000 cycles plus its final record. Cleanup records show no failed or incomplete
+attempts; both D2 passes have 28 settled zero-scope/process snapshots. These
+observations support this run, not general leak freedom.
+
+D2 attribution medians in milliseconds (each listed parent phase has zero missing
+observations in each operation kind):
+
+| Phase | All 696 | Source inspection (348) | Source decode (308) | Cached PNG decode (40) |
+| --- | ---: | ---: | ---: | ---: |
+| Runtime validation | 47.111 | 46.545 | 47.583 | 48.070 |
+| Launcher readiness | 27.226 | 27.486 | 27.103 | 26.755 |
+| Request transfer | 0.035 | 0.036 | 0.035 | 0.030 |
+| Response receipt/validation | 1.780 | 1.455 | 6.983 | 2.151 |
+| Acknowledgement/exit | 0.882 | 0.979 | 0.797 | 0.930 |
+| Terminal cleanup | 3.209 | 3.630 | 2.694 | 3.970 |
+
+Helper execution is independently timed at 1.516 ms and reply serialization at
+0.041 ms, each with 696 observations and zero missing timelines. These overlap
+parent response work; response receipt is not pure transfer cost. Request transfer
+includes framing/copying and pipe writes. Consumer dispatch/worker phases each
+have 460 observations and 40 missing out of 500 jobs; this is distinct from zero
+missing provider timings. No medians are added or used to predict savings.
+
+Keep these other measurement domains separate:
+
+| Domain | Existing result | Limitation |
+| --- | --- | --- |
+| D2 resource pass | 84 cases / 220 operations; sampled combined RSS/cgroup maximum 90,849,280 bytes | Separate run; parent/scope/combined reads unavailable 2/6/8 times; 10-ms sampling can miss peaks; all 220 pre-ack reads available |
+| A/B2 scheduler | Cold medians 118.892 / 1,303.886 ms; warm 0.209 / 0.218 ms; cancellation 51.057 / 361.447 ms | 100 batches per cell, zero missing timed samples; mixed 16-request, two-thread batches, not single operations or rendered frames; warm starts zero decoders |
+| Validation-only profile | Baseline 42.457 ms; combined read/SHA-256 40.894 ms in instrumented variant | 100 measured calls per variant, zero missing; warm-cache separate workload; reading and hashing unresolved |
+| Hash performance | Baseline/candidate 42.101 / 41.071 ms pooled medians | 150 calls each, zero missing; paired savings above, not subtraction of these medians |
+
+Neither resource timings nor validation-only measurements may be subtracted from
+D2 or A/B2 scheduler latency. The historical 47.111-ms validation result remains
+unchanged. Readiness is substantial across all three operation kinds, but the
+records do not establish an achievable speedup.
+
+### Exact readiness boundary and unresolved contributors
+
+The preserved `overlays/holonight-images.patch`, `overlays/telemetry.h` and
+`D2/source/holonight-images/src/isolated/{runtime,helper}.cpp` establish that
+`PreviewEvidence::Phase launcherPhase` starts immediately before
+`process.start("/usr/bin/systemd-run", command)` and ends after successful
+`receive(1) == "R"`. Its steady-clock interval excludes runtime validation,
+command/environment construction and subsequent request transfer. It differs
+from the broader `result.startup` elapsed value. The archived/current runtime
+comparison shows the same launch ordering, with diagnostic telemetry additions
+and stderr capture in D2; production still discards that stderr.
+
+Within that measured outer interval, source establishes this sequence:
+
+1. Start systemd-run and `waitForStarted(1000)`. D2 records `helper_launch` after
+   this wait: it marks QProcess startup, not sandbox-helper readiness.
+2. Discover the launcher's named scope via `/proc/<pid>/cgroup`; retry with
+   `waitForFinished(5)` while absent. Read and verify `memory.max == 2147483648`
+   and `memory.swap.max == 0` before releasing the gate.
+3. Write `G` and call `waitForBytesWritten(5)`. The unsandboxed helper gate waits
+   for that byte, then `execv`s bubblewrap. Gate loading can overlap the parent's
+   scope discovery; the steps are not necessarily disjoint timing components.
+4. Bubblewrap creates the sandbox and binds the runtime, then executes the helper.
+   Its loader/startup, `QCoreApplication`, plugin-path/allocation-limit setup and
+   opening stdin/stdout precede writing/flushing `R`. The parent receives `R`
+   through its read loop, which uses `waitForReadyRead(5)` when necessary.
+
+Only the outer phase and QProcess-start event are direct readiness observations;
+the `scope` event is emitted after readiness, not when discovery succeeds.
+There are no separate observations for successful scope discovery, completed
+limit checks, gate consumption/exec, sandbox setup, loader work or helper entry.
+Five-millisecond wait arguments are upper wait bounds, not evidence of fixed
+five-millisecond sleeps or dominant polling overhead. Systemd, bubblewrap,
+dynamic loading, parent wakeups and instrumentation overhead remain unresolved.
+
+Full per-operation validation remains required and generation reuse remains
+**no-go**. Storage mechanisms, session reuse and prestarted workers stay closed.
+This documentation-only review changes no production code, API, installer,
+experiment tooling or frozen evidence. Verification reused existing correctness
+and performance results and checked document agreement and whitespace in both
+repositories; no builds, tests, benchmarks, runtime payloads, preview matrix,
+installed-package suite, deployment, commits, publication or pin updates ran.
+
+**Recommend a separate launcher-readiness profiling design.** The bounded question
+is which internal intervals account for the historical approximately 27-ms
+readiness cost, and how much is execution versus parent observation delay.
+Propose observation boundaries before start, after QProcess startup, at successful
+scope discovery, after verified limits, at gate write/consumption and pre-exec,
+at sandbox-helper entry, before/after readiness flush and at parent receipt.
+Separate pre-entry loader/sandbox work unless independently observable; account
+for overlap, clock comparability, missing records and instrumentation overhead.
+Any later design must preserve fresh per-operation scopes/helpers, full validation,
+limit verification before gate release, sandbox/descriptor/environment policy,
+protocol, cancellation/deadlines, acknowledgement ordering and verified hierarchical
+cleanup. This recommendation authorizes neither that experiment nor implementation.
