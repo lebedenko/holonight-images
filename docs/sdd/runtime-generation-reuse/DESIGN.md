@@ -1308,3 +1308,85 @@ cross-document agreement and whitespace checks in both repositories. No new
 automated tests, native builds, benchmarks, frozen-runtime execution/modification,
 installation, trust changes, alternative backend/storage investigation, commits,
 publication or pin updates were performed.
+
+## Bounded hash correctness review (2026-11-09)
+
+**Bounded correctness agreement established.** The private
+[`experiments/hash-correctness`](../../../experiments/hash-correctness/README.md)
+implements the previously reviewed single 65,536-byte loop without changing its
+policy: open/readable guards, positive reads fed to Qt SHA-256, termination on
+zero/negative reads and `atEnd()` completion. Production validation, public APIs,
+installation rules and generation reuse remain unchanged; reuse is still no-go.
+This section extends, rather than replaces, the historical profile and provenance
+findings above.
+
+Installed QtCore remains package `6.12.0-3`, SHA-256
+`10635d6f11ff08ed0d81ce3dd6b461b54e90ce29b23aa45d85ad4d50074e022e`, build ID
+`431db715687f9ab0ce66ba4379d344d7b672b510`. The reconciled source provenance was
+reused without another source investigation. GCC `16.2.1 20260810` and installed
+Qt Core/Gui `6.12.0` built the private native executables. Images HEAD
+`1713cbdb00a37366e8cd0c5e34915f49afc288dd` was archived once for both validator
+variants. The candidate overlay adds its experiment-only header and replaces
+only the device-hashing expression; review confirmed that the open guard, full
+hex digest comparison and remaining validation checks are preserved.
+
+### Finite results
+
+| Scenario group | Paired cases | Result |
+| --- | ---: | --- |
+| Buffered QFile, deterministic binary/NUL input: 0, 1, minus/at/plus one at 1/16/64/128 KiB | 14 | Completion and full digest agree with Python SHA-256 |
+| Closed and write-only devices | 2 | Both reject without consuming input |
+| Seekable controlled device, 997-byte positive partial reads, buffered/unbuffered; terminal zero/negative, both end states; offsets minus/at/plus one at 1/16/64 KiB | 72 | Completion, prefix digest, position and error/end states agree |
+| Borrowed-descriptor QFile invalidation immediately before hashing or after those nine prefix offsets | 10 | Both reject with `ReadError`, `Bad file descriptor`, end false and the expected prefix digest |
+| Validator: valid plus all nine existing manifest/content/mode/symlink mutations | 10 | Both accept only valid; every expected verdict agrees |
+
+Each pair uses independently initialized devices. Requested and returned
+`readData()` counts are retained as diagnostics, not equality requirements or
+syscall counts. QFile fault injection delegates actual reads/errors to QFile,
+with a cap at the chosen byte offset before closing the borrowed descriptor.
+Dedicated children avoid descriptor reuse between invalidation and hashing.
+The normal QFile cases also use the observing subclass, without a read cap.
+
+Controlled negative-read cases with end true **complete successfully with a
+prefix digest**, just as the installed overload does. Their full-input digest
+comparison is false. This deliberately preserves the existing completion policy;
+there is no unconditional error rejection or new byte-count requirement. Real
+QFile invalidation at the tested offsets instead produced end false and failure.
+These results do not establish universal filesystem error equivalence or rule out
+chunk-dependent differences for other devices, fault mechanisms or mutations.
+
+The preserved B2 inventory hash
+`9d6a0ef8084555b4a31fa6972471b231e44bba4b283c584bb6203d1b00a34127` matched all
+61 runtime entries before copying. Every case/variant received a fresh disposable
+copy. All before/after case inventories and the frozen before/after inventory
+match. Frozen payloads were never executed. All 231 command children exited zero,
+were reaped and had absent `/proc` entries; no timeout or retry occurred.
+
+### Evidence and decision limits
+
+Ignored Images `build/hash-correctness-h3eyasci/` preserves commands and child
+cleanup records, raw stdout/stderr, tooling snapshots, scenario observations,
+expected full/prefix digests, validator verdicts, compiler/dependency identities,
+archive, overlays, compile commands, binaries and fixture inventories.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Candidate header | `3c3694c6c0041ab5cf0e6ec803f80d718344cca4824586be210c73b78e0c3598` |
+| Source archive | `c0df34691c9c4fec55c7b6bc9a09df5c4efe73dd574a1f47e607a84938d025a0` |
+| Candidate overlay | `4942b8a30680a73c8c0aac0dbc47d9b29338537916d40aeafa97e817466a2938` |
+| Device observations | `5a8de03ccc1167bd11dae80a69d935e5340a60424e376855ac7840e1875733d6` |
+| Validator observations | `243a4406b17263426d6918d61849090855a0515637540ee812cba75711bbcced` |
+| Summary | `c508c9e65db28799e40ddff6a0b2e23a18b840defc17398911797fdd2ed3742c` |
+
+Four focused runner tests passed before native checks: acceptance/digest mismatch,
+incomplete output, timeout partial-output preservation and reaping, and exact
+source-overlay guards. The overlay and cross-document conclusions were reviewed;
+Images and umbrella whitespace checks passed. No full preview matrix,
+installed-package suite, benchmark, deployment, installation, commit, publication
+or pin update was performed.
+
+Finite agreement qualifies only these tested conditions. It does not establish
+universal error equivalence, concurrent-mutation protection, worthwhile savings
+or production readiness. A separate bounded performance experiment may now be
+considered for this same candidate; this result does not authorize production
+integration or generation reuse.
