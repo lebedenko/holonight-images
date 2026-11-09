@@ -286,3 +286,25 @@ measurement without retry or extra manager cleanup. The packaging regression is
 fixed and tested; new verified A/B2 and D2 packages were built, but were not measured
 again in this iteration. See the [umbrella audit](../../../../docs/initiatives/image-isolation.md#cleanup-observation-correction-and-excluded-iteration-2026-11-09) for artifact paths,
 denominators, the preserved failure, verification and remaining gaps.
+
+## Fresh corrected Experiment 0 preparation gate (2026-11-09)
+
+The fresh iteration `build/preview-iteration-qyruwtid` stopped before measurement:
+B2's `build/holonight-images/install_manifest.txt` differs from its frozen package
+inventory (expected `42f04300fb75b3bf77a6fe41a21460811491cdd63095bc98ce367c9606e0f325`,
+observed `5c93d2e527707c3879ff5c140ae8216de920c24b5a1d42a97451e88c833f79c0`).
+Scheduler `preview-scheduler-f2c1ty8f` and diagnostic `preview-diagnostic-ymcm3gs7`
+remain unchanged. No measured pass or rebuild was launched. Lifecycle 1,000 cycles,
+D2 attribution 280 samples, resources 84 samples and A/B2 600 batches are entirely
+unattempted; attempted/completed/failed/excluded counts are all zero. All 3,000
+lifecycle operation timings and 964 later observations remain missing.
+
+The runner now preserves preparation failures and checks lifecycle records even
+on exit zero; missing/malformed output and runtime/provider failures gate later
+passes. All 25 focused tooling tests, Python compilation and whitespace checks
+pass. Previously recorded cleanup/provider, installed/relocated,
+scheduler-barrier and Files/chooser acceptance is reused. The artifact mismatch
+must be resolved before native measurement; no performance or cleanup conclusion
+is available, and runtime-generation reuse remains deferred. Historical evidence,
+failures and exclusions are preserved. See the umbrella image-isolation note's
+"Fresh corrected Experiment 0 preparation" section for hashes and denominators.
