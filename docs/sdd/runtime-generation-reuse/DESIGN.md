@@ -1056,6 +1056,10 @@ commit or pin update was performed.
 
 ## Qt SHA-256 path review (2026-11-09)
 
+Historical review: the source-checksum blocker below is superseded by the
+[provenance reconciliation](#qt-package-source-provenance-reconciliation-2026-11-09).
+The candidate remains unqualified; the review and measurements are retained.
+
 **Stop with no qualified candidate.** The installed binary confirms the small
 device-read loop and OpenSSL EVP path, but exact distribution-source provenance
 remains unresolved. The single reviewed candidate is a bounded 64 KiB streaming
@@ -1192,3 +1196,115 @@ Verification for this review is source/binary/citation and cross-document review
 plus whitespace checks in Images and the umbrella. No new automated tests,
 native builds, benchmarks, frozen-runtime execution/modification, installation,
 deployment, commits or pin updates were performed.
+
+## Qt package-source provenance reconciliation (2026-11-09)
+
+**Provenance reconciled; no qualified candidate.** The recipe checksum is now
+reproduced from freshly retrieved primary Qt inputs. The earlier mismatch came
+from omitting makepkg's Git export-attribute sanitation before archiving. This
+closes the Qt source-checksum blocker, not the separate correctness obligations
+for the same 64 KiB loop. No candidate implementation or experiment followed.
+
+Evidence is retained in ignored Images `build/qt-provenance-20261109/`, including
+`commands.jsonl`, executed investigation scripts, package/signature records,
+primary Git repositories, both archives, `archive-comparison.json`,
+`source-audit.json` and `SHA256SUMS`. The cached sources were not modified.
+
+### Package and source identity
+
+The cached `qt6-base-6.12.0-3-x86_64.pkg.tar.zst` SHA-256 is
+`dea8a8c45a7929af115a2ba96c60dff927425f8c65432cf5d1027c79c8aa98f0`.
+Its detached signature verifies as Antonio Rojas using the existing distribution
+keyring (`VALIDSIG`, `TRUST_FULLY`; signing fingerprint
+`1519D5ABA65BF6FC2B73C7567A4E76095D8A52E4`). GPG reported the keyring ownership
+warning and nonwritable trust database; verification succeeded without changing
+trust configuration. `.PKGINFO` and `.BUILDINFO` identify `6.12.0-3`; the latter's
+recipe SHA-256 is `fa3c902bb00fb1f5a3b7021d5016d6ef6aa190d3944e261d5e2c6756abc9afc4`.
+The package QtCore payload and installed library have the same SHA-256
+`10635d6f11ff08ed0d81ce3dd6b461b54e90ce29b23aa45d85ad4d50074e022e`
+and build ID `431db715687f9ab0ce66ba4379d344d7b672b510`.
+
+The freshly fetched [Arch packaging revision
+`070299bbd137a648d9da9d430eefb7ac47a55f1c`](https://gitlab.archlinux.org/archlinux/packaging/packages/qt6-base/-/tree/070299bbd137a648d9da9d430eefb7ac47a55f1c)
+(tag `6.12.0-3`, tag object `29753e4160df25d337850a22ee0d93605cd995d5`)
+has that exact recipe hash. Both recipe patches match their recorded checksums.
+The fresh [Qt `v6.12.0` tag](https://code.qt.io/cgit/qt/qtbase.git/tag/?h=v6.12.0)
+and cache agree on all three identities:
+
+| Object | Git object ID |
+| --- | --- |
+| Annotated tag | `fcef5b2c755492753eb8f7424dd2bc7337832068` |
+| Peeled commit | `025bdad181de241e81bf853c8a2d7bf3d19261a9` |
+| Tree | `09cffd3c354c81b13e3d780ff603b6728f79eb33` |
+
+### Exact checksum and bounded discrepancy follow-up
+
+`.BUILDINFO` records Git `2.56.0-1` (also installed) and pacman
+`7.1.0.r9.g54d9411-2`; installed pacman is release `-3` of the same revision.
+The cached, distribution-signature-verified `-2` package's
+`usr/share/makepkg/source/git.sh` is byte-identical to the installed script.
+The [primary pacman implementation at `54d9411`](https://gitlab.archlinux.org/pacman/pacman/-/blob/54d9411/scripts/libmakepkg/source/git.sh.in)
+differs only by build-time interpreter/directory substitutions. In addition to
+`calc_checksum_git()`'s archive command, `download_git()` writes this override:
+
+```text
+* -export-subst -export-ignore
+```
+
+The override belongs in the source repository's `info/attributes` (inside `.git`
+for a non-bare checkout). The cached checkout had no such override. Qt's
+[tracked export attributes](https://code.qt.io/cgit/qt/qtbase.git/tree/.gitattributes?h=v6.12.0)
+substitute `.tag` and omit attribute/ignore files. The cache had no relevant
+archive configuration override. Makepkg suppresses global Git configuration and
+uses `/etc/makepkg.d/gitconfig`; the installed file only rewrites an unrelated
+Sourceware URL. That config file was absent from the cached pacman `-2` package;
+no claim is made about the builder's complete configuration.
+
+With Git `2.56.0`, the exact checksum operation is:
+
+```sh
+git -c core.abbrev=no -C "$source_repo" archive --format tar v6.12.0 | sha256sum
+```
+
+| Inputs | SHA-256 |
+| --- | --- |
+| Original cache, without sanitation | `f24f106cee5f49a1e0778ec84301467640f6fdbbbcdf61e77623c119ab966208` |
+| Fresh primary clone, without sanitation | `f24f106cee5f49a1e0778ec84301467640f6fdbbbcdf61e77623c119ab966208` |
+| Fresh primary clone, with makepkg sanitation and configuration environment | `d97ef157dc50bdf0425337e9adede8135ab508a4ab2f1abae7e9cfc42c5f86db` |
+
+The last value exactly matches the recipe. Sanitation was the single targeted
+discrepancy follow-up; no Git-version/configuration search was performed.
+Archive comparison finds 27,582 versus 27,620 entries: 38 attribute/ignore files
+are restored and `.tag` changes from the expanded commit to literal `$Format:%H$`.
+All other shared entries have identical content hashes and compared metadata
+(type, mode, owner/group, timestamp, link target and size). Both global PAX
+comments name the same peeled commit. The seven reviewed hashing/I/O source
+files match between archives and the historical review copies.
+
+The two recipe patches affect mkspecs. The three primary Qt cherry-pick patches
+([CMake](https://code.qt.io/cgit/qt/qtbase.git/patch/?id=e320c929207aaea0d4c8fb2cd29b16de6cbd2b2c),
+[Markdown](https://code.qt.io/cgit/qt/qtbase.git/patch/?id=032643f99e090e0304ef935c2ee11c109d55c8a1),
+[Wayland](https://code.qt.io/cgit/qt/qtbase.git/patch/?id=6b7ee05def510c333fbb8944ae669b72a48367f3))
+affect the named subsystems and related tests. Their complete target-path audit
+has no overlap with `qcryptographichash.cpp`, `qiodevice.cpp`, `qiodevice_p.h`,
+`qfile.cpp`, `qfiledevice.cpp`, `qfsfileengine.cpp` or `qfsfileengine_unix.cpp`.
+This verifies their lack of direct edits to the reviewed files; it is not a
+reproduction of compiler, linker or binary output.
+
+### Decision and verification
+
+Source archive provenance is reconciled and installed/package QtCore correspondence
+is verified. The installed binary has **not** been independently reproduced;
+OpenSSL provider/assembly attribution remains outside this result. Recommend a
+separate bounded correctness review of the same 64 KiB loop, covering the prior
+review's read/error and buffering obligations before any experiment is qualified.
+No read/error tests were executed in this step.
+
+Production validation, public APIs and generation-reuse no-go status remain
+unchanged. Historical reviews and measurements are retained. Verification covered
+package signatures and payload identity, recipe/tag/tree identity, exact checksum
+reproduction, archive metadata/content, patch target paths, citations,
+cross-document agreement and whitespace checks in both repositories. No new
+automated tests, native builds, benchmarks, frozen-runtime execution/modification,
+installation, trust changes, alternative backend/storage investigation, commits,
+publication or pin updates were performed.
