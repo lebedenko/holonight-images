@@ -250,3 +250,39 @@ instrumented sources. Experiment 0 remains incomplete. Resolve the cleanup gate
 before choosing an optimization; runtime-generation reuse is only a conditional
 next experiment suggested by the observed validation cost. No optimization or
 cleanup behavior change is included in this milestone.
+
+## Cleanup observation correction (2026-11-09)
+
+A deterministic regression reproduces a proof-sequencing defect: an initially
+empty scope is observed empty again, its launcher is reaped, and the redundant
+final observation is unreadable. The previous implementation fails immediately
+without observing the subsequent confirmed removal. The corrected loop evaluates
+fresh hierarchical state and launcher state together within the existing five-second
+budget. It never permanently latches an earlier empty observation.
+
+The private filesystem boundary captures errno immediately and distinguishes
+directory lookup, events open, events read and events parsing. An open/read error
+causes exactly one fresh directory check; only ENOENT proves removal. Existing
+directories, permission errors, other lookup errors and malformed/contradictory
+population records remain unproven. Diagnostics keep compatible fields and add
+the latest 32 observations, total count and an explicit truncation flag. No public
+API, runtime status, cancellation precedence, translated message, TERM/KILL policy
+or preview deadline changes.
+
+This reproduces and fixes the scripted races; it does not establish the causes of
+the two historical failures or the two later recurrences. The umbrella's
+[corrected iteration](../../../../tooling/preview-benchmark/README.md#corrected-cleanup-iteration-ab2-and-d2)
+keeps A unchanged, names the corrected implementation B2 and its instrumented
+copy D2, and preserves all previous evidence. Measurement results and remaining
+gaps are recorded in the umbrella note. Runtime-generation reuse remains a
+conditional next experiment, not an implementation in this iteration.
+
+Iteration result: **corrected measurements remain incomplete**. An initial packaging
+error silently skipped the cleanup patch while reporting success. The resulting
+mislabeled lifecycle (1,000 cycles), attribution (280 samples), resources (84
+samples) and scheduler (50 attempted batches, one failed warm setup) are preserved
+and excluded from corrected evidence. The scheduler cleanup recurrence stopped
+measurement without retry or extra manager cleanup. The packaging regression is
+fixed and tested; new verified A/B2 and D2 packages were built, but were not measured
+again in this iteration. See the [umbrella audit](../../../../docs/initiatives/image-isolation.md#cleanup-observation-correction-and-excluded-iteration-2026-11-09) for artifact paths,
+denominators, the preserved failure, verification and remaining gaps.

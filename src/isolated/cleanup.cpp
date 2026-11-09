@@ -6,7 +6,9 @@
 #include <QJsonDocument>
 
 #include <cerrno>
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace HolonightImages::Isolation {
 namespace {
@@ -39,24 +41,86 @@ QString bounded(const QByteArray& bytes, bool truncated = false) {
 bool ManagerResult::ok() const {
   return started && !timed_out && exit_status == QProcess::NormalExit && exit_code == 0;
 }
-GroupState observeGroup(const QString& group) {
+namespace {
+class NativeObservation final : public ObservationOperations {
+ public:
+  NativeObservation() = default;
+  NativeObservation(const NativeObservation&) = delete;
+  NativeObservation& operator=(const NativeObservation&) = delete;
+  NativeObservation(NativeObservation&&) = delete;
+  NativeObservation& operator=(NativeObservation&&) = delete;
+  ~NativeObservation() override {
+    if (fd_ >= 0) {
+      close(fd_);
+    }
+  }
+  int directoryError(const QString& group) override {
+    struct stat info{};
+    const auto path = QFile::encodeName(group);
+    const int result = stat(path.constData(), &info);
+    return result == 0 ? 0 : errno;
+  }
+  int openEvents(const QString& group) override {
+    const auto path = QFile::encodeName(group + "/cgroup.events");
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg): POSIX open without creation.
+    fd_ = open(path.constData(), O_RDONLY | O_CLOEXEC);
+    return fd_ >= 0 ? 0 : errno;
+  }
+  QByteArray readEvents(int& error) override {
+    QByteArray bytes(4097, '\0');
+    qsizetype size = 0;
+    while (size < bytes.size()) {
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic): bounded remaining buffer.
+      const auto count = read(fd_, bytes.data() + size, bytes.size() - size);
+      if (count < 0) {
+        error = errno;
+        return {};
+      }
+      if (count == 0) {
+        break;
+      }
+      size += count;
+    }
+    bytes.resize(size);
+    return bytes;
+  }
+
+ private:
+  int fd_ = -1;
+};
+}  // namespace
+GroupObservation observeGroup(const QString& group) {
+  NativeObservation ops;
+  return observeGroup(group, ops);
+}
+GroupObservation observeGroup(const QString& group, ObservationOperations& ops) {
+  GroupObservation observation;
+  observation.stage = "directory-lookup";
   if (group.isEmpty()) {
-    return GroupState::Unavailable;
+    return observation;
   }
-  struct stat info{};
-  if (stat(QFile::encodeName(group).constData(), &info) != 0) {
-    return errno == ENOENT ? GroupState::Removed : GroupState::Unreadable;
+  observation.error = ops.directoryError(group);
+  if (observation.error != 0) {
+    observation.state = observation.error == ENOENT ? GroupState::Removed : GroupState::Unreadable;
+    return observation;
   }
-  QFile events(group + "/cgroup.events");
-  if (!events.open(QIODevice::ReadOnly)) {
-    return GroupState::Unreadable;
+  observation.stage = "events-open";
+  observation.error = ops.openEvents(group);
+  QByteArray bytes;
+  if (observation.error == 0) {
+    observation.stage = "events-read";
+    bytes = ops.readEvents(observation.error);
   }
-  const auto bytes = events.read(4097);
-  if (events.error() != QFile::NoError) {
-    return GroupState::Unreadable;
+  if (observation.error != 0) {
+    observation.directory_rechecked = true;
+    observation.directory_error = ops.directoryError(group);
+    observation.state = observation.directory_error == ENOENT ? GroupState::Removed : GroupState::Unreadable;
+    return observation;
   }
+  observation.stage = "events-parse";
+  observation.state = GroupState::Malformed;
   if (bytes.size() > 4096) {
-    return GroupState::Malformed;
+    return observation;
   }
   int count = 0;
   GroupState state = GroupState::Malformed;
@@ -68,11 +132,12 @@ GroupState observeGroup(const QString& group) {
       } else if (line == "populated 1") {
         state = GroupState::Populated;
       } else {
-        return GroupState::Malformed;
+        return observation;
       }
     }
   }
-  return count == 1 ? state : GroupState::Malformed;
+  observation.state = count == 1 ? state : GroupState::Malformed;
+  return observation;
 }
 // Keep the lifecycle sequence together for auditing.
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
@@ -88,7 +153,13 @@ CleanupReport cleanup(CleanupOperations& ops, const QString& unit, QString group
     return value;
   };
   auto empty = [&] {
-    report.observation = ops.observe(group);
+    const auto observation = ops.observe(group);
+    report.observation = observation.state;
+    ++report.observation_count;
+    if (report.observations.size() == 32) {
+      report.observations.removeFirst();
+    }
+    report.observations.append(observation);
     const bool proven = report.observation == GroupState::Removed || report.observation == GroupState::Empty;
     report.proof = proven ? stateName(report.observation) : QString{};
     return proven;
@@ -141,16 +212,20 @@ CleanupReport cleanup(CleanupOperations& ops, const QString& unit, QString group
       }
     }
     report.stage = "hierarchical-proof";
-    while (!empty() && remaining() > 0) {
-      ops.pause();
-    }
-    if (ops.launcherState() != QProcess::NotRunning) {
-      ops.waitLauncher(qMax<qint64>(1, remaining()));
-    }
-    if (remaining() > 0 && empty() && ops.launcherState() == QProcess::NotRunning) {
-      report.verified = true;
-      report.stage.clear();
-      return done();
+    while (remaining() > 0) {
+      const bool proven = empty();
+      const int launcher = ops.launcherState();
+      if (remaining() > 0 && proven && launcher == QProcess::NotRunning) {
+        report.verified = true;
+        report.stage.clear();
+        return done();
+      }
+      if (launcher != QProcess::NotRunning && remaining() > 0) {
+        ops.waitLauncher(qMin<qint64>(50, remaining()));
+      }
+      if (remaining() > 0) {
+        ops.pause();
+      }
     }
     if (ops.launcherState() != QProcess::NotRunning) {
       report.stage = "launcher-reaping";
@@ -167,6 +242,16 @@ QString failureDiagnostic(RuntimeStatus original, const QString& message, const 
       {"operation", QJsonObject{{"status", static_cast<int>(original)}, {"message", bounded(message.toUtf8())}}},
   };
   if (report != nullptr) {
+    QJsonArray observations;
+    for (const auto& observation : report->observations) {
+      observations.append(QJsonObject{
+          {"stage", observation.stage},
+          {"error", observation.error},
+          {"state", stateName(observation.state)},
+          {"directory_rechecked", observation.directory_rechecked},
+          {"directory_error", observation.directory_error},
+      });
+    }
     QJsonArray commands;
     for (const auto& command : report->commands) {
       commands.append(QJsonObject{
@@ -188,6 +273,9 @@ QString failureDiagnostic(RuntimeStatus original, const QString& message, const 
                                {"group", report->group},
                                {"proof", report->proof},
                                {"observation", stateName(report->observation)},
+                               {"observations", observations},
+                               {"observation_count", report->observation_count},
+                               {"observations_truncated", report->observation_count > report->observations.size()},
                                {"launcher_state", report->launcher_state},
                                {"commands", commands},
                            });

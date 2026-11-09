@@ -131,7 +131,7 @@ class NativeCleanup final : public CleanupOperations {
  public:
   explicit NativeCleanup(QProcess& launcher) : launcher_(launcher) { clock_.start(); }
   qint64 now() override { return clock_.elapsed(); }
-  GroupState observe(const QString& group) override { return observeGroup(group); }
+  GroupObservation observe(const QString& group) override { return observeGroup(group); }
   int launcherState() override { return launcher_.state(); }
   void waitLauncher(qint64 milliseconds) override { launcher_.waitForFinished(static_cast<int>(milliseconds)); }
   void killLauncher() override { launcher_.kill(); }
