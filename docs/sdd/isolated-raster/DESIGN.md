@@ -308,3 +308,44 @@ must be resolved before native measurement; no performance or cleanup conclusion
 is available, and runtime-generation reuse remains deferred. Historical evidence,
 failures and exclusions are preserved. See the umbrella image-isolation note's
 "Fresh corrected Experiment 0 preparation" section for hashes and denominators.
+
+## Corrected Experiment 0 completed (2026-11-09)
+
+The new umbrella iteration `build/preview-iteration-m9uucbpj` passed all four
+sequential native passes using existing A/B2 and D2 artifacts and frozen fixtures:
+1,000 lifecycle cycles / 3,000 operations in 281.751 seconds, 280 attribution
+samples, 84 separate resource samples and 600 scheduler batches. Planned,
+requested, observed attempted and completed counts agree; failed, excluded,
+unattempted, unreported requested and missing timed counts are zero. There was
+no lifecycle cap shortfall or partial cycle. Cleanup verification passed, including
+all runtime results, drained scheduler batches and 28 zero-scope/process snapshots
+in each D2 pass. No retry or extra manager cleanup ran.
+
+The selected metadata exception normalizes only complete acceptance prefixes in
+B2's Images install manifest, in memory. The normalized hash and size match the
+frozen inventory exactly (`42f04300fb75b3bf77a6fe41a21460811491cdd63095bc98ce367c9606e0f325`,
+9,701 bytes); mode stays 0644. Nothing rewrites the manifest or inventory. Other
+changes remain rejected. The rebuilt probe's recorded identity and both linked
+Images libraries match B2. A/B2 workload descriptions, warm setups and timed
+fixture identities passed independently; warm timed decoder entries were zero.
+
+Existing cleanup/provider, installed/relocated, scheduler-barrier and Files/chooser
+acceptance was reused. No rebuild, broad acceptance rerun, production code or
+public API change was made. Final focused tooling verification passes 30 tests,
+Python compilation and whitespace checks; native measurement ran without concurrent
+builds, tests or static analysis. The earlier `preview-iteration-qyruwtid`
+preparation stop and all prior runs, failures and exclusions remain unchanged.
+
+Attribution observed 696 successful provider operations and complete helper timing.
+Requested resource sampling was 10 ms; observed intervals were 8.984–11.534 ms.
+Unavailable parent RSS/scope-total/combined reads (2/6/8) remain explicit.
+Independent memory maxima and parent/helper timelines are never added together.
+Scheduler response delivery remains distinct from rendered QML frame latency;
+transient resource peaks and general leak freedom are not established.
+
+See the [completed umbrella evidence note](../../../../docs/initiatives/image-isolation.md#corrected-experiment-0-completed-2026-11-09)
+for full artifact hashes, actual denominators, scheduler distributions and limits.
+Corrected Experiment 0 is complete for this matrix. Runtime-generation reuse now
+merits a separately designed experiment around runtime identity and invalidation;
+no optimization, session reuse, prestarted workers, deployment, publication,
+commit or pin update was made. Historical failure causes remain unresolved.
