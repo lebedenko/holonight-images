@@ -13,7 +13,8 @@ python3 holonight-images/experiments/launcher-readiness-profile/run.py
 The second command is one bounded execution, requiring host user-systemd and
 bubblewrap access. It creates a unique ignored `build/launcher-readiness-*`
 directory in Images. It archives HEAD once, copies the executed tooling into two
-disposable source trees, applies exact-anchor overlays, builds Release client
+disposable source trees (overlaying existing tooling and rejecting any extra files
+through an exact file/hash/mode inventory), applies exact-anchor overlays, builds Release client
 and helper targets against host dependencies and prepares complete runtime
 bundles with the existing preparation script. Nothing is installed. Frozen
 payloads are never executed. The preserved PNG is read only after its corrected
@@ -66,3 +67,19 @@ ordering, legitimate flush/receipt races, overlaps, and partial-run reporting.
 No broad preview, installed-package or container acceptance suite is relevant
 to these standalone private tools. Generation reuse remains no-go; this run
 selects no optimization and makes no historical speedup claim.
+
+The follow-up report ranks S-P0, L-S, G1-L, X-G1, H-X and P2-H by median
+per-call duration for each kind/block and pooled by kind. It reports n, median,
+nearest-rank p95, median per-call share and largest counts (including ties and
+unique wins separately). Six-interval closure is checked per call. A consistent
+leader must be the same unique interval in all three blocks and the pool.
+Nested initialization/write/flush timings and actual discovery/readiness waits
+remain separate. Conclusions require the full qualification and overhead gates;
+otherwise rankings are explicitly descriptive only.
+
+The authorized follow-up permits one explicit recovery for a demonstrated
+qualification tooling defect, only with proved cleanup and before any schedule
+slot, including warm-ups. There is no automatic retry loop. The session cap is
+two qualification attempts (72 calls maximum) and one 414-call schedule; failures
+after measurement starts cannot be recovered. Policy and tooling are captured
+before dispatch. See the SDD's ranked follow-up results for the actual outcome.

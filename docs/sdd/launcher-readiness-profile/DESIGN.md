@@ -363,3 +363,354 @@ Production/API behavior, dependencies, installation, frozen evidence, Grub and
 pins remain untouched; no commits or publication. Generation reuse remains
 **no-go**; hash tuning, storage mechanisms, session reuse and prestarted workers
 remain closed.
+
+
+## Ranked follow-up results (2026-11-09)
+
+**No qualified attribution**: four overhead gates exceeded 1.10 despite complete
+qualification and measurement. Source decode failed block 1 p95 (1.2746), block 3
+median (1.1055), and pooled p95 (1.1207); cached PNG decode failed block 2 p95
+(1.2056). Inspection passed all its gates, but the full experiment gate failed.
+All rankings below are **descriptive only**, including inspection.
+
+The observed median ranking was identical across all three operation kinds,
+each block and each pool: **P0→S, X→H, L→G1, H→P2, S→L, G1→X**.
+P0→S was the unique largest interval in 58/60 detailed measured calls per kind;
+X→H led in the remaining two. There were no median-ranking ties. This is
+consistency within these observations, not qualified causal attribution.
+
+Qualification: 36/36 passed. Schedule: 414/414 attempted; 0 unattempted. Stop: none. Recovery attempts used: zero.
+
+Evidence: [`build/launcher-readiness-7cv0vdaw`](../../../build/launcher-readiness-7cv0vdaw/summary.json); final integrity and cleanup checks are in `post-run-audit.json`. The original `launcher-readiness-kwx9663u` evidence remains unchanged.
+
+### Outer-readiness overhead gates
+
+| Kind | Block | Reference median / p95 ms | Detailed median / p95 ms | Median / p95 ratio | Gate |
+| --- | --- | ---: | ---: | ---: | --- |
+| inspection | 1 | 25.832766 / 40.169162 | 27.606582 / 35.514138 | 1.0687 / 0.8841 | pass |
+| inspection | 2 | 28.072226 / 36.758639 | 28.257690 / 38.882467 | 1.0066 / 1.0578 | pass |
+| inspection | 3 | 28.079406 / 38.386631 | 28.890323 / 36.392339 | 1.0289 / 0.9480 | pass |
+| inspection | pooled | 27.575456 / 38.386631 | 28.271480 / 38.395291 | 1.0252 / 1.0002 | pass |
+| source | 1 | 27.181194 / 33.107024 | 29.658783 / 42.198618 | 1.0912 / 1.2746 | fail |
+| source | 2 | 27.839651 / 35.957661 | 27.339409 / 35.848296 | 0.9820 / 0.9970 | pass |
+| source | 3 | 26.832603 / 38.989742 | 29.662494 / 38.786082 | 1.1055 / 0.9948 | fail |
+| source | pooled | 26.994706 / 36.182546 | 28.628548 / 40.551568 | 1.0605 / 1.1207 | fail |
+| cached | 1 | 26.287228 / 40.528865 | 28.121966 / 38.907365 | 1.0698 / 0.9600 | pass |
+| cached | 2 | 29.903737 / 33.393688 | 27.823892 / 40.259187 | 0.9304 / 1.2056 | fail |
+| cached | 3 | 30.137100 / 42.373979 | 29.541401 / 41.598350 | 0.9802 / 0.9817 | pass |
+| cached | pooled | 29.204356 / 40.528865 | 28.121966 / 40.573982 | 0.9629 / 1.0011 | pass |
+
+### Six non-overlapping intervals
+
+Detailed measured calls only; warm-ups excluded. Rows within each kind/block are ranked by median duration. Shares and closure are calculated per call. Largest counts include ties; unique counts exclude ties. No medians are summed or subtracted.
+
+| Kind | Block | Interval | n | Median ms | p95 ms | Median share | Largest / unique |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| inspection | 1 | S-P0 | 20 | 15.786469 | 16.157063 | 53.27% | 20 / 20 |
+| inspection | 1 | H-X | 20 | 9.617209 | 13.836733 | 35.77% | 0 / 0 |
+| inspection | 1 | G1-L | 20 | 3.071506 | 4.558252 | 10.52% | 0 / 0 |
+| inspection | 1 | P2-H | 20 | 0.264047 | 0.425874 | 0.98% | 0 / 0 |
+| inspection | 1 | L-S | 20 | 0.026962 | 0.109698 | 0.10% | 0 / 0 |
+| inspection | 1 | X-G1 | 20 | 0.000438 | 0.000901 | 0.00% | 0 / 0 |
+| inspection | 2 | S-P0 | 20 | 15.883546 | 21.484517 | 55.19% | 20 / 20 |
+| inspection | 2 | H-X | 20 | 10.484211 | 15.025789 | 37.36% | 0 / 0 |
+| inspection | 2 | G1-L | 20 | 2.463134 | 3.683875 | 8.20% | 0 / 0 |
+| inspection | 2 | P2-H | 20 | 0.314543 | 0.484959 | 1.07% | 0 / 0 |
+| inspection | 2 | L-S | 20 | 0.025594 | 0.085287 | 0.09% | 0 / 0 |
+| inspection | 2 | X-G1 | 20 | 0.000549 | 0.001381 | 0.00% | 0 / 0 |
+| inspection | 3 | S-P0 | 20 | 15.757198 | 20.999763 | 54.87% | 18 / 18 |
+| inspection | 3 | H-X | 20 | 10.150213 | 15.877489 | 36.00% | 2 / 2 |
+| inspection | 3 | G1-L | 20 | 2.139991 | 4.897560 | 6.24% | 0 / 0 |
+| inspection | 3 | P2-H | 20 | 0.335523 | 0.435421 | 1.04% | 0 / 0 |
+| inspection | 3 | L-S | 20 | 0.029999 | 0.065893 | 0.11% | 0 / 0 |
+| inspection | 3 | X-G1 | 20 | 0.000634 | 0.001091 | 0.00% | 0 / 0 |
+| inspection | pooled | S-P0 | 60 | 15.796586 | 21.181352 | 54.30% | 58 / 58 |
+| inspection | pooled | H-X | 60 | 9.930124 | 15.025789 | 36.83% | 2 / 2 |
+| inspection | pooled | G1-L | 60 | 2.483229 | 4.598840 | 8.61% | 0 / 0 |
+| inspection | pooled | P2-H | 60 | 0.283762 | 0.467045 | 1.03% | 0 / 0 |
+| inspection | pooled | L-S | 60 | 0.027048 | 0.104878 | 0.10% | 0 / 0 |
+| inspection | pooled | X-G1 | 60 | 0.000487 | 0.001236 | 0.00% | 0 / 0 |
+| source | 1 | S-P0 | 20 | 15.956124 | 21.046330 | 51.91% | 20 / 20 |
+| source | 1 | H-X | 20 | 9.971438 | 14.293486 | 36.92% | 0 / 0 |
+| source | 1 | G1-L | 20 | 2.862976 | 6.087007 | 10.58% | 0 / 0 |
+| source | 1 | P2-H | 20 | 0.278855 | 0.428310 | 0.98% | 0 / 0 |
+| source | 1 | L-S | 20 | 0.029191 | 0.045764 | 0.10% | 0 / 0 |
+| source | 1 | X-G1 | 20 | 0.000504 | 0.001085 | 0.00% | 0 / 0 |
+| source | 2 | S-P0 | 20 | 15.699344 | 16.476706 | 52.60% | 20 / 20 |
+| source | 2 | H-X | 20 | 9.787254 | 14.844422 | 36.50% | 0 / 0 |
+| source | 2 | G1-L | 20 | 2.687684 | 5.448822 | 8.65% | 0 / 0 |
+| source | 2 | P2-H | 20 | 0.270309 | 0.490293 | 1.00% | 0 / 0 |
+| source | 2 | L-S | 20 | 0.024857 | 0.061092 | 0.10% | 0 / 0 |
+| source | 2 | X-G1 | 20 | 0.000452 | 0.002125 | 0.00% | 0 / 0 |
+| source | 3 | S-P0 | 20 | 15.831736 | 21.064091 | 51.73% | 18 / 18 |
+| source | 3 | H-X | 20 | 11.288829 | 15.268022 | 38.29% | 2 / 2 |
+| source | 3 | G1-L | 20 | 2.742153 | 5.156426 | 8.31% | 0 / 0 |
+| source | 3 | P2-H | 20 | 0.334572 | 0.433968 | 1.15% | 0 / 0 |
+| source | 3 | L-S | 20 | 0.031248 | 0.152698 | 0.10% | 0 / 0 |
+| source | 3 | X-G1 | 20 | 0.000457 | 0.000740 | 0.00% | 0 / 0 |
+| source | pooled | S-P0 | 60 | 15.814523 | 21.046330 | 51.73% | 58 / 58 |
+| source | pooled | H-X | 60 | 10.640467 | 14.976063 | 37.22% | 2 / 2 |
+| source | pooled | G1-L | 60 | 2.787840 | 5.448822 | 8.75% | 0 / 0 |
+| source | pooled | P2-H | 60 | 0.299007 | 0.490293 | 1.06% | 0 / 0 |
+| source | pooled | L-S | 60 | 0.028259 | 0.118152 | 0.10% | 0 / 0 |
+| source | pooled | X-G1 | 60 | 0.000469 | 0.001094 | 0.00% | 0 / 0 |
+| cached | 1 | S-P0 | 20 | 15.741532 | 20.931005 | 52.34% | 20 / 20 |
+| cached | 1 | H-X | 20 | 9.842847 | 15.124127 | 36.98% | 0 / 0 |
+| cached | 1 | G1-L | 20 | 3.327077 | 5.978792 | 10.30% | 0 / 0 |
+| cached | 1 | P2-H | 20 | 0.323817 | 0.522086 | 1.15% | 0 / 0 |
+| cached | 1 | L-S | 20 | 0.030324 | 0.130729 | 0.10% | 0 / 0 |
+| cached | 1 | X-G1 | 20 | 0.000508 | 0.000750 | 0.00% | 0 / 0 |
+| cached | 2 | S-P0 | 20 | 15.746144 | 21.073392 | 49.92% | 19 / 19 |
+| cached | 2 | H-X | 20 | 10.389150 | 15.717218 | 36.89% | 1 / 1 |
+| cached | 2 | G1-L | 20 | 3.236295 | 6.331427 | 11.06% | 0 / 0 |
+| cached | 2 | P2-H | 20 | 0.316341 | 0.492465 | 1.12% | 0 / 0 |
+| cached | 2 | L-S | 20 | 0.027005 | 0.041202 | 0.09% | 0 / 0 |
+| cached | 2 | X-G1 | 20 | 0.000482 | 0.000909 | 0.00% | 0 / 0 |
+| cached | 3 | S-P0 | 20 | 15.881971 | 20.959797 | 52.39% | 19 / 19 |
+| cached | 3 | H-X | 20 | 10.662932 | 18.369674 | 36.78% | 1 / 1 |
+| cached | 3 | G1-L | 20 | 2.468649 | 4.970363 | 9.12% | 0 / 0 |
+| cached | 3 | P2-H | 20 | 0.361011 | 0.504442 | 1.12% | 0 / 0 |
+| cached | 3 | L-S | 20 | 0.027629 | 0.098444 | 0.09% | 0 / 0 |
+| cached | 3 | X-G1 | 20 | 0.000487 | 0.001174 | 0.00% | 0 / 0 |
+| cached | pooled | S-P0 | 60 | 15.779219 | 20.974674 | 52.10% | 58 / 58 |
+| cached | pooled | H-X | 60 | 10.389150 | 15.803908 | 36.93% | 2 / 2 |
+| cached | pooled | G1-L | 60 | 3.027904 | 5.978792 | 9.67% | 0 / 0 |
+| cached | pooled | P2-H | 60 | 0.328639 | 0.522086 | 1.13% | 0 / 0 |
+| cached | pooled | L-S | 60 | 0.027807 | 0.124958 | 0.09% | 0 / 0 |
+| cached | pooled | X-G1 | 60 | 0.000492 | 0.000958 | 0.00% | 0 / 0 |
+
+### Consistency
+
+- Source inspection: P0→S is the unique median leader in all three blocks and pooled.
+- Source decode: P0→S is the unique median leader in all three blocks and pooled.
+- Cached PNG decode: P0→S is the unique median leader in all three blocks and pooled.
+
+### Nested timings and actual waits
+
+Each cell is median / p95 in ms, from the same detailed measured calls. These spans overlap the six ranked intervals and must not be added to them. Complete statistics, including wait counts, gate overlap and parent write/flush timings, remain in `summary.json`.
+
+| Kind | Block | H→R0 | R0→R1 write | F0→F1 flush | R0→P2 | Discovery work | Actual discovery waits | Actual readiness waits |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| inspection | 1 | 0.234627 / 0.366492 | 0.003805 / 0.005872 | 0.005694 / 0.008833 | 0.027446 / 0.087677 | 0.124819 / 0.219476 | 15.176689 / 15.472453 | 12.351114 / 18.104999 |
+| inspection | 2 | 0.267300 / 0.415038 | 0.004300 / 0.006606 | 0.005891 / 0.009253 | 0.045318 / 0.127552 | 0.148772 / 0.234883 | 15.294507 / 20.617590 | 13.191394 / 17.470890 |
+| inspection | 3 | 0.256005 / 0.373455 | 0.004490 / 0.007882 | 0.006136 / 0.011026 | 0.042093 / 0.098835 | 0.118736 / 0.234423 | 15.225655 / 20.286483 | 13.027078 / 20.454422 |
+| inspection | pooled | 0.247975 / 0.392806 | 0.004219 / 0.007144 | 0.005778 / 0.010229 | 0.040225 / 0.113647 | 0.133849 / 0.234883 | 15.229017 / 20.356837 | 12.830777 / 19.535647 |
+| source | 1 | 0.231423 / 0.376395 | 0.004281 / 0.009986 | 0.005740 / 0.010485 | 0.038406 / 0.089018 | 0.154609 / 0.209630 | 15.294422 / 20.414820 | 13.347554 / 20.918948 |
+| source | 2 | 0.238517 / 0.409856 | 0.003830 / 0.007146 | 0.005601 / 0.012348 | 0.028334 / 0.086980 | 0.128485 / 0.194331 | 15.188527 / 15.671239 | 12.008760 / 19.858933 |
+| source | 3 | 0.282199 / 0.362144 | 0.004457 / 0.011013 | 0.006332 / 0.008966 | 0.068135 / 0.137139 | 0.163611 / 0.231742 | 15.304894 / 20.446657 | 14.245566 / 19.626978 |
+| source | pooled | 0.249648 / 0.395738 | 0.003969 / 0.011013 | 0.005897 / 0.010618 | 0.035202 / 0.132264 | 0.148897 / 0.211906 | 15.270073 / 20.414820 | 13.304680 / 20.605084 |
+| cached | 1 | 0.268636 / 0.432376 | 0.004713 / 0.006586 | 0.006219 / 0.011352 | 0.042690 / 0.137384 | 0.129015 / 0.201191 | 15.192981 / 20.248858 | 13.160960 / 18.480632 |
+| cached | 2 | 0.250978 / 0.394766 | 0.004118 / 0.006390 | 0.005962 / 0.013347 | 0.051995 / 0.113944 | 0.152133 / 0.228251 | 15.220710 / 20.377542 | 14.209618 / 19.163405 |
+| cached | 3 | 0.266452 / 0.427758 | 0.004406 / 0.011857 | 0.005989 / 0.010582 | 0.071682 / 0.122580 | 0.149937 / 0.200322 | 15.379264 / 20.444259 | 13.514588 / 22.555128 |
+| cached | pooled | 0.264724 / 0.432376 | 0.004365 / 0.008547 | 0.005989 / 0.013347 | 0.050267 / 0.136907 | 0.146675 / 0.224530 | 15.246648 / 20.444259 | 13.328252 / 22.091277 |
+
+### Provenance, cleanup, verification and limits
+
+This newly authorized session used one attempt, with no recovery or retries.
+The pre-dispatch policy allowed at most one explicit tooling-defect recovery
+before any warm-up or measured slot, after proved cleanup; no recovery was
+permitted after measurement began. It did not replace the original failed run.
+All 36 qualification cases passed (six cases for each variant/kind), including
+the corrected descendant cancellation. Each variant then completed 180 measured
+calls and 27 excluded warm-ups: 20 measured and three warm-ups per kind/block,
+60 measured and nine warm-ups pooled per kind. No samples were trimmed,
+replaced, missing or unattempted. The four failed overhead gates are retained.
+
+Archived Images revision `4af61053fd010ab5e3f9e40ac514ff4d9f225eea` once;
+`provenance.json` records its tree/archive hash, both host-native Release builds,
+compiler/dependency identities and binary/overlay hashes. Existing tooling in
+the archive was overlaid with the captured snapshot and required to match its
+exact file/hash/size/mode inventory before instrumentation. Extra stale files
+are rejected. The descendant correction remains unchanged. Reviewed archived
+runtime/helper sources match the inspected working files; all overlay anchors
+passed before native execution. Full runtime validation, actual memory/swap
+checks, sandbox configuration, protocol, acknowledgement ordering and
+hierarchical cleanup remain in place. The existing preparation script produced
+both runtime bundles; their inventories differ only in the private helper and
+its manifest. No earlier evidence payload was executed.
+
+The source and cache fixtures retain separate identities/options, expected
+inspection facts and independently decoded pixel hashes. Their hashes and
+160×80 dimensions match those documented for the original attempt. All 450
+calls have verified hierarchical cleanup within five seconds and reaped
+launchers: 407 removal proofs and 43 populated-zero proofs. Final audit found
+all 450 recorded cgroup directories removed. There were no watchdog
+interventions. Captured tooling, fixtures and both runtime inventories remained
+unchanged. Raw/parsed records, scope identities, cleanup evidence, schedules,
+policy, source inventories and command/build logs remain in the ignored attempt
+directory. Nothing in the original attempt was rewritten.
+
+The original 12 focused tests passed before edits; the extended 17-test suite
+passed before native dispatch. Regressions cover existing archive tooling,
+stale-file rejection, stable/changing/tied rankings, per-call shares and
+closure, warm-up exclusion and qualification-gated conclusions. Changed Python
+syntax and repository whitespace checks pass; formatting was reviewed against
+the existing Python style (no Python formatter is configured here). The fresh
+Release builds verify native compilation; no native source changed afterward.
+No unrelated preview, container or installed-package suites were repeated.
+
+P0→S includes startup and scope discovery/observation delay; it is not pure
+systemd execution. X→H combines exec, bubblewrap/helper loading, static
+initialization and scheduling; these are not separable with these marks.
+Actual waits are elapsed waits, not CPU accounting. H→P2 includes helper
+initialization and readiness receipt; write and flush spans are nested, and
+flush may finish after parent receipt. This measures launcher readiness, not
+image decoding latency. Shared capture overhead versus production remains
+unmeasured, and failed ratio gates prevent qualified attribution. No historical
+subtraction, inferred savings or optimization selection follows. Production,
+public APIs, dependencies, installation, pins and previously closed optimization
+directions are unchanged; generation reuse remains **no-go**. No commits or
+publications were created.
+
+
+## Offline paired-sample review (2026-11-09)
+
+**Decision: retain no qualified attribution; do not repeat the broad profile or
+change production based on these samples.** The review found variability within
+blocks and differing tail patterns, but no demonstrated tooling defect that
+explains the failed gates. A constant instrumentation surcharge, one pair order,
+or uniform host drift does not describe all observations. This does not rule
+out instrumentation overhead or scheduling effects; the reference records lack
+the internal observations needed to distinguish them.
+
+This review reads the retained evidence only. Reproducible analysis, all 180
+measured pairs, input hashes and detailed outputs are retained separately in
+[`build/launcher-readiness-review-20261109`](../../../build/launcher-readiness-review-20261109/review.json)
+(`review.py`, `review.log`, `pairs.json`, `input-hashes.json`). No archived code or
+payload was executed. All original samples, summaries and verdicts are unchanged.
+The analysis verified 414 schedule associations and outer intervals, reconstructed
+all six detailed intervals and discovery/readiness wait sums for 207 detailed
+calls, then excluded all 54 warm-ups for the comparisons below. It independently
+reproduced all twelve original median/p95 gate ratios and checked that hashed
+inputs remained unchanged. Exploratory comparisons are not replacement gates,
+significance tests, causal estimates, or retrospective qualification.
+
+### Paired differences and order
+
+Delta is detailed minus reference readiness **within each recorded pair**, then
+aggregated. It is not the difference between distribution medians. Positive
+means detailed was slower. Each block has 20 measured pairs, ten per order;
+each pool has 60 pairs, thirty per order.
+
+| Kind | Block | Median paired delta ms | Detailed slower / pairs | Reference-first median delta ms | Detailed-first median delta ms |
+| --- | --- | ---: | ---: | ---: | ---: |
+| inspection | 1 | 0.003 | 10 / 20 | -0.228 | 2.375 |
+| inspection | 2 | 1.098 | 12 / 20 | 1.872 | -0.477 |
+| inspection | 3 | -0.623 | 10 / 20 | -3.097 | 1.293 |
+| inspection | pooled | 0.172 | 32 / 60 | 0.003 | 1.036 |
+| source | 1 | 1.880 | 14 / 20 | 3.730 | 1.203 |
+| source | 2 | 1.010 | 11 / 20 | 1.010 | 0.805 |
+| source | 3 | 3.132 | 13 / 20 | 2.559 | 3.132 |
+| source | pooled | 2.028 | 38 / 60 | 2.028 | 2.330 |
+| cached | 1 | 0.970 | 12 / 20 | 0.950 | 1.711 |
+| cached | 2 | -0.761 | 7 / 20 | -0.618 | -2.158 |
+| cached | 3 | 1.049 | 11 / 20 | 2.625 | 0.103 |
+| cached | pooled | 0.130 | 30 / 60 | 0.897 | -0.086 |
+
+Source decode has a positive paired median in every block and both order groups;
+its pooled paired median is +2.028 ms, with 38/60 positive differences. That is
+an association worth retaining, not proof of instrument cost. Inspection and
+cached decode have pooled paired medians of +0.172 and +0.130 ms. Order effects
+change direction across blocks; there is no universal first/second-call penalty.
+Operation kinds occur in contiguous rotated batches, so kind, host conditions
+and elapsed experiment time are not independently randomized. Decoding itself
+follows P2 and cannot directly be timed by this readiness measure.
+
+### Slow tails and block drift
+
+Nearest-rank p95 with 20 calls is the nineteenth sorted observation (the
+second-largest); with 60 calls it is the fifty-seventh (fourth-largest).
+The table retains the threshold and higher detailed calls for the failed p95
+groups, plus the two largest detailed calls in source block 3. No observation
+was removed, replaced or used to recalculate a passing gate.
+
+| Detailed call | Kind / block | First variant | Outer ms | Paired delta ms | P0→S ms | L→G1 ms | X→H ms | Discovery waits |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| m074 | source / 1 | detailed | 42.199 | 13.445 | 21.076 | 6.361 | 14.293 | 4 |
+| m082 | source / 1 | detailed | 42.940 | 14.835 | 20.872 | 2.783 | 18.634 | 4 |
+| m402 | source / 3 | detailed | 38.786 | 13.957 | 21.267 | 2.692 | 14.520 | 4 |
+| m393 | source / 3 | reference | 40.865 | 20.017 | 21.064 | 3.345 | 16.005 | 4 |
+| m054 | source / 1 | detailed | 40.552 | 16.718 | 20.874 | 5.142 | 14.191 | 4 |
+| m197 | cached / 2 | reference | 40.259 | 9.958 | 20.918 | 5.381 | 13.642 | 4 |
+| m209 | cached / 2 | reference | 40.574 | 20.428 | 16.325 | 8.044 | 15.717 | 3 |
+
+Source block 1's detailed p95/max calls m074/m082 are both detailed-first;
+cached block 2's m197/m209 are both reference-first. Source pooled p95 is m054,
+not a new sample. The listed source tails combine four discovery waits (about
+20.3–20.6 ms total) with X→H of 14.2–18.6 ms. Cached m209 has only three discovery
+waits, but L→G1 reaches 8.044 ms and X→H reaches 15.717 ms. There is no single
+interval responsible for every high outer observation. These detailed spans
+cannot explain paired differences because reference spans were not captured.
+
+Reference calls also have large tails: source block 1's m076/m084 take
+33.107/36.183 ms while their detailed partners are 10.428/6.367 ms faster.
+Source block 3's m408/m388 take 38.990/39.800 ms while their detailed partners
+are 11.459/7.639 ms faster. Cached block 2 fails p95 even though detailed is
+faster in 13/20 pairs and its marginal median ratio is 0.9304. The source block 3
+median failure is not merely a largest-sample issue: its paired median is
++3.132 ms and 13/20 differences are positive. Full tails from both variants,
+including passing groups, remain in `review.json`.
+
+Within-block drift is mixed. Comparing the first ten with the last ten measured
+calls per variant, source block 1 reference medians rise 24.646→28.764 ms and
+detailed medians rise 26.114→30.233 ms. In cached block 3, reference rises
+29.188→34.138 ms while detailed falls 30.102→28.010 ms. This is compatible with
+varying runtime conditions but cannot establish their cause; CPU load, scheduler
+traces and actual scope-availability timestamps were not recorded. No drift
+correction or sample adjustment is justified by these observations.
+
+### Discovery work versus waits
+
+Shares are calculated within each detailed measured call before taking medians.
+The residual is calculated per call as P0→S minus discovery work and discovery
+waits, and includes launcher start and code between those spans. The following
+medians are separate summaries and must not be summed or subtracted.
+
+| Kind | Discovery work median ms | Discovery waits median ms | Median wait share of P0→S | Median work share of P0→S | Other elapsed median ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| inspection | 0.134 | 15.229 | 96.14% | 0.85% | 0.448 |
+| source | 0.149 | 15.270 | 96.47% | 0.97% | 0.391 |
+| cached | 0.147 | 15.247 | 96.41% | 0.91% | 0.386 |
+
+Across 180 detailed measured calls, there are 526 discovery waits. Their actual
+median duration is 5.072 ms (range 5.007–5.548 ms), and all return false from
+`waitForFinished(5)`. Two, three, four and five waits occur in 42, 111, 26 and
+one call respectively. The retained launcher code checks `/proc/<pid>/cgroup`
+for the matching unit, then waits when it is absent. The records show when
+checks failed and succeeded, not when the scope became available between them.
+Thus the roughly 96% wait share is **not** an estimate of removable polling
+latency. Startup can progress during those waits; scheduling also contributes
+to elapsed time. Discovery work itself is roughly 0.13–0.15 ms at the median.
+Readiness waits overlap the gate/helper intervals and must not be added to them.
+
+### Instrumentation review and next decision
+
+Normal reference calls contain exactly three parent observations (P0, P2, exit)
+and no child records. Detailed measured calls contain 28–44 parent observations
+and 17 child records. Both use the same parent stderr-draining policy, but the
+detailed child path additionally performs nonblocking setup, pipe checks,
+clock/namespace probes (`stat`, `clock_getres`, opening/reading monotonic offsets),
+formatting and stderr writes in both gate and sandbox helper. These probes run
+on ordinary detailed measurements, not only during qualification. Their cost
+and any resulting scheduling/pipe effects are not independently measured.
+This is a plausible observer effect, not a newly demonstrated implementation
+bug. No malformed, missing or mismatched samples were found by this review.
+
+Accept the present attribution limit. A rerun of the unchanged broad experiment
+would add no new explanatory observation and must not be used to chase passing
+ratios. If further profiling is pursued, the next useful work is a **new focused
+design**, before implementation or execution: distinguish scope availability
+from parent discovery and give both comparison arms the same minimal parent
+boundary observations. It must explain how any availability observation avoids
+changing scope startup, how clock qualification remains valid if repeated child
+probes are reduced, and how observer cost will be bounded. Gate release must
+still follow actual memory/swap verification. Preserve full validation, sandbox
+policy, protocol, acknowledgement and hierarchical cleanup. Such a design might
+prove infeasible or too intrusive; do not promise removable milliseconds.
+
+This review authorizes no new native run or production optimization. Generation
+reuse, hash tuning, storage changes, session reuse and prestarted workers remain
+closed. Only this review documentation and new ignored analysis artifacts were
+written. Syntax, arithmetic/association assertions, source review and whitespace
+checks are the relevant verification; previous native builds and tests were not
+repeated. No commits or publications were created.

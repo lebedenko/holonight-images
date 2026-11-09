@@ -1634,3 +1634,58 @@ interval distributions or overhead ratios. The executed evidence is preserved;
 the controller correction has offline regression/syntax verification only, with
 no native retry. Full validation and generation reuse **no-go** remain unchanged;
 no historical speedup claim or reopening of closed optimization directions.
+
+
+## Ranked launcher-readiness follow-up (2026-11-09)
+
+The authorized [follow-up profile](../launcher-readiness-profile/DESIGN.md#ranked-follow-up-results-2026-11-09) completed all 36 qualification calls
+and the unchanged 414-call schedule (180 measured and 27 warm-ups per variant),
+without recovery, replacement or trimming. **No qualified attribution**:
+source-decode block 1 p95 (1.2746), block 3 median (1.1055), pooled p95 (1.1207),
+and cached-PNG block 2 p95 (1.2056) exceeded the 1.10 overhead limit.
+
+Descriptively, all kinds and blocks had the same median ranking: startup through
+observed scope discovery, combined sandbox/helper loading, verified limits to
+gate consumption, helper initialization to parent readiness receipt, actual
+limit verification, then gate consumption to pre-exec. The first interval led
+58/60 detailed measured calls per kind, with pooled medians of 15.797 ms for
+inspection, 15.815 ms for source decode and 15.779 ms for cached PNG decode.
+Full per-block/pool counts, median/p95 durations, per-call shares, largest counts,
+nested timings and actual waits are in the linked SDD and retained summary.
+These remain descriptive observations because the full overhead gate failed.
+
+Evidence is retained in Images `build/launcher-readiness-7cv0vdaw`; the original
+failed attempt remains unchanged. Fresh reference/detailed host-native Release
+builds succeeded. All 450 calls have verified cleanup and reaped launchers;
+all recorded cgroups were removed at final audit. Tooling, fixture and runtime
+inventories remained unchanged. Seventeen focused tests, changed-Python syntax
+and whitespace checks pass; no unrelated suites were repeated. This is readiness,
+not total decode latency: scope observation is not pure systemd time and
+bubblewrap/loader work cannot be separated. No historical savings are inferred.
+Production/API behavior, installation, dependencies and pins remain unchanged;
+generation reuse remains no-go and closed optimization directions stay closed.
+No commits or publications were created.
+
+
+### Offline readiness review (2026-11-09)
+
+The [paired-sample review](../launcher-readiness-profile/DESIGN.md#offline-paired-sample-review-2026-11-09) retains **no qualified attribution**.
+All 180 measured pairs were preserved. Median detailed-minus-reference paired
+differences were +0.172 ms for inspection, +2.028 ms for source decode and
++0.130 ms for cached PNG decode; pair-order and within-block effects were mixed.
+Failed tails span discovery waits, gate delay and combined sandbox/helper
+loading. Roughly 96% of P0→S was spent in observed discovery waits, but actual
+scope availability was not timestamped, so this is not removable-delay evidence.
+Reference samples contain only outer boundaries; detailed child clock probes
+and diagnostic writes remain an unquantified potential observer effect.
+
+No demonstrated tooling defect explains the four failed gates. Accept the
+current attribution limit; do not repeat the broad run or optimize production
+from these observations. Any further work should first design a focused,
+minimally intrusive way to distinguish scope availability from parent discovery,
+with comparable parent observations and valid clock qualification. No new run
+was performed or authorized by this review. Original evidence remains unchanged;
+reproducible offline outputs are in Images `build/launcher-readiness-review-20261109`.
+Verification covered retained-data consistency, reproduced gate ratios, input
+hashes, script syntax, source inspection and whitespace. Closed optimization
+directions and the generation-reuse no-go remain unchanged.

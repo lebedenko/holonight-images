@@ -27,7 +27,8 @@ FIXTURE_HASH = '610672660f509f2fc6afff14459f7c5575c5f3589c0354938d02376f9874e587
 
 
 def sha(path):
-    return hashlib.file_digest(path.open('rb'), 'sha256').hexdigest()
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
 def save(path, data):
@@ -44,6 +45,15 @@ def inventory(root):
         elif not p.is_dir():
             raise ValueError('nonregular private inventory')
     return result
+
+
+def stage_tooling(snapshot, destination):
+    expected = inventory(snapshot)
+    # Overlay tracked files, but never silently retain stale archive contents.
+    inventory(destination)
+    shutil.copytree(snapshot, destination, dirs_exist_ok=True)
+    if inventory(destination) != expected:
+        raise ValueError('staged tooling inventory mismatch (including stale extra files)')
 
 
 def fixture(source, destination):
@@ -136,7 +146,7 @@ class Run:
             with tarfile.open(archive) as tar:
                 tar.extractall(source,filter='data')
             experiment = source/'experiments/launcher-readiness-profile'
-            shutil.copytree(self.output/'tooling',experiment)
+            stage_tooling(self.output/'tooling',experiment)
             patch = home/'overlay.patch'
             patch.write_text(overlay.apply(source,variant=='detailed'))
             save(home/'source-inventory.json',inventory(source))
@@ -296,6 +306,8 @@ def main():
     slots, qual = a.schedule(), a.qualification()
     save(output/'schedule.json',slots); save(output/'qualification-schedule.json',qual)
     save(output/'policy.json',dict(version=1,watchdog_seconds=25,emergency_seconds=5,parent_records=a.LIMIT,stderr_bytes=a.BYTE_LIMIT,child_record_bytes=512,overhead_limit=1.10,
+        recovery=dict(max_attempts=2,max_qualification_calls=72,max_measurement_calls=414,
+            automatic_retry=False,only_before_first_measurement_slot=True,requires_identified_tooling_defect_and_proved_cleanup=True),
         source_limits=[268435456,64000000,32768,268435456,1048576,67108864,4096],cached_limits=[33554432,65536,256,33554432,1048576,1048576,4096],
         inspection_orientation='Apply',inspection_metadata=False,source_bound=[256,256],source_orientation='Apply',cached_bound=[256,256],cached_orientation='Ignore'))
     samples, qualifications, builds = [], [], {}
@@ -313,6 +325,8 @@ def main():
         save(output/'fixture-inventory.json',fixture_inventory)
         builds = Run(output).build()
         def integrity():
+            if inventory(output/'tooling')!=json.loads((output/'tooling-inventory.json').read_text()):
+                raise ValueError('tooling mutation')
             if inventory(output/'fixtures')!=fixture_inventory or sha(args.fixture)!=FIXTURE_HASH:
                 raise ValueError('fixture mutation')
             for v,b in builds.items():
@@ -359,7 +373,8 @@ def main():
         for variant,build in builds.items():
             if inventory(build['bundle'])!=build['inventory']:
                 integrity_errors.append('bundle mutation at exit: '+variant)
-        summary=a.summary(slots,samples)
+        summary=a.summary(slots,samples,qualification_passed=(not stop and not integrity_errors and
+            len(qualifications)==36 and all(q['qualified'] for q in qualifications)))
         summary.update(stop=stop,integrity_errors=integrity_errors,qualification_attempted=len(qualifications),
                        qualification_passed=sum(q['qualified'] for q in qualifications),qualification_unattempted=[q['id'] for q in qual if q['id'] not in {s['id'] for s in qualifications}])
         if stop or integrity_errors or len(qualifications)!=36 or not all(q['qualified'] for q in qualifications):

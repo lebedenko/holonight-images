@@ -9,6 +9,7 @@ from pathlib import Path
 
 import accounting as a
 import overlay
+import run
 
 
 def observations():
@@ -19,6 +20,10 @@ def observations():
     gate = [('clock_inode',25,42),('clock_resolution',26,1),('clock_sec',27,0),('clock_nsec',28,0),('G0',29,0),('G1',60,0),('X',65,0)]
     helper = [('H',70,0),('clock_inode',71,42),('clock_resolution',72,1),('clock_sec',73,0),('clock_nsec',74,0),('R0',80,0),('R1',81,1),('F0',82,0),('F1',110,1),('T',120,0)]
     return [dict(role=role,mark=m,ns=n,value=v,seq=i,pid=pid) for role,pid,items in [('parent',123,parent),('gate',456,gate),('helper',1,helper)] for i,(m,n,v) in enumerate(items)]
+
+
+def durations(outer=100, leader='S-P0'):
+    return dict(outer=outer, **{n: outer*(.5 if n==leader else .1) for n in a.RANKED_INTERVALS})
 
 
 class AccountingTests(unittest.TestCase):
@@ -85,19 +90,19 @@ class AccountingTests(unittest.TestCase):
 
     def test_warmups_are_excluded_and_failed_block_cannot_hide_in_pool(self):
         slots=a.schedule()
-        samples=[dict(s,qualified=True,intervals={'outer':999999 if s['warmup'] else 100}) for s in slots]
-        summary=a.summary(slots,samples)
+        samples=[dict(s,qualified=True,intervals=durations(1000000 if s['warmup'] else 100)) for s in slots]
+        summary=a.summary(slots,samples,qualification_passed=True)
         self.assertEqual(summary['verdict'],'qualified attribution')
         self.assertTrue(all(r['variants']['reference']['intervals']['outer']['median']==100 for r in summary['rows']))
         for s in samples:
             if s['variant']=='detailed' and s['block']==0 and s['kind']=='source' and not s['warmup']:
-                s['intervals']['outer']=111
-        self.assertEqual(a.summary(slots,samples)['verdict'],'no qualified attribution')
+                s['intervals']=durations(200)
+        self.assertEqual(a.summary(slots,samples,qualification_passed=True)['verdict'],'no qualified attribution')
 
     def test_missing_warmup_is_incomplete_even_with_all_measurements(self):
         slots=a.schedule()
-        samples=[dict(s,qualified=True,intervals={'outer':100}) for s in slots if s['id']!='m000']
-        self.assertEqual(a.summary(slots,samples)['verdict'],'no qualified attribution')
+        samples=[dict(s,qualified=True,intervals=durations()) for s in slots if s['id']!='m000']
+        self.assertEqual(a.summary(slots,samples,qualification_passed=True)['verdict'],'no qualified attribution')
 
     def test_partial_run_preserves_slots_and_operation_association(self):
         slots=a.schedule()
@@ -115,6 +120,59 @@ class AccountingTests(unittest.TestCase):
             subprocess.run(['c++','-std=c++23','-Wall','-Wextra','-Werror',
                             str(Path(__file__).with_name('test_fault_control.cpp')),'-o',str(binary)],check=True)
             subprocess.run([str(binary)],check=True)
+
+
+    def test_archive_with_tooling_is_overlaid_exactly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot, archive = Path(directory)/'snapshot', Path(directory)/'archive'
+            snapshot.mkdir(); archive.mkdir()
+            (snapshot/'run.py').write_text('new')
+            (archive/'run.py').write_text('old')
+            run.stage_tooling(snapshot, archive)
+            self.assertEqual(run.inventory(snapshot), run.inventory(archive))
+
+    def test_stale_archive_files_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot, archive = Path(directory)/'snapshot', Path(directory)/'archive'
+            snapshot.mkdir(); archive.mkdir()
+            (archive/'stale.py').write_text('stale')
+            with self.assertRaisesRegex(ValueError, 'inventory mismatch'):
+                run.stage_tooling(snapshot, archive)
+
+    def test_rankings_stable_changing_and_tied(self):
+        slots=a.schedule()
+        samples=[dict(s,qualified=True,intervals=durations()) for s in slots]
+        report=a.summary(slots,samples,True)
+        self.assertEqual(report['consistency']['source']['consistent_unique_leader'],'S-P0')
+        for sample in samples:
+            if sample['kind']=='source' and sample['block']==1:
+                sample['intervals']=durations(100,'H-X')
+        report=a.summary(slots,samples,True)
+        self.assertIsNone(report['consistency']['source']['consistent_unique_leader'])
+        tied=dict(outer=100, **dict(zip(a.RANKED_INTERVALS,[30,30,10,10,10,10])))
+        result=a.ranking([dict(intervals=tied)])
+        self.assertEqual(result['leaders'],['S-P0','L-S'])
+        self.assertEqual(result['rows'][0]['largest_count'],1)
+        self.assertEqual(result['rows'][0]['unique_largest_count'],0)
+
+    def test_shares_are_computed_per_call_and_closure_is_required(self):
+        first=dict(outer=100, **dict(zip(a.RANKED_INTERVALS,[80,4,4,4,4,4])))
+        second=dict(outer=1000, **dict(zip(a.RANKED_INTERVALS,[100,180,180,180,180,180])))
+        result=a.ranking([dict(intervals=c) for c in (first,second)])
+        row=next(r for r in result['rows'] if r['interval']=='S-P0')
+        self.assertAlmostEqual(row['median_share'],.45)
+        self.assertNotAlmostEqual(row['median_share'],90/550)
+        first['outer']=101
+        with self.assertRaisesRegex(ValueError,'closure'):
+            a.ranking([dict(intervals=first)])
+
+    def test_qualification_gates_ranking_conclusions(self):
+        slots=a.schedule()
+        samples=[dict(s,qualified=True,intervals=durations()) for s in slots]
+        report=a.summary(slots,samples)
+        self.assertEqual(report['verdict'],'no qualified attribution')
+        self.assertEqual(report['ranking_status'],'descriptive only')
+        self.assertEqual(a.summary(slots,samples,True)['ranking_status'],'qualified')
 
     def test_overlay_refuses_stale_anchors(self):
         with self.assertRaises(ValueError): overlay.replace('old old','old','new')

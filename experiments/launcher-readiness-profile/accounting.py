@@ -5,6 +5,7 @@ import re
 import statistics
 
 KINDS = ('inspection', 'source', 'cached')
+RANKED_INTERVALS = ('S-P0', 'L-S', 'G1-L', 'X-G1', 'H-X', 'P2-H')
 VARIANTS = ('reference', 'detailed')
 CASES = ('success', 'before', 'await', 'timeout', 'failed', 'descendant')
 LIMIT = 32768
@@ -185,7 +186,24 @@ def intervals(events, detailed):
     return result
 
 
-def summary(slots, samples):
+def ranking(samples):
+    calls = [s['intervals'] for s in samples]
+    for call in calls:
+        if sum(call[name] for name in RANKED_INTERVALS) != call['outer']:
+            raise ValueError('ranked interval closure')
+    rows = []
+    for name in RANKED_INTERVALS:
+        rows.append(dict(interval=name, **stats([c[name] for c in calls]),
+            median_share=statistics.median([c[name]/c['outer'] for c in calls]) if calls else None,
+            largest_count=sum(c[name] == max(c[n] for n in RANKED_INTERVALS) for c in calls),
+            unique_largest_count=sum(c[name] > max(c[n] for n in RANKED_INTERVALS if n != name) for c in calls)))
+    rows.sort(key=lambda r: -(r['median'] if r['median'] is not None else -1))
+    leaders = [r['interval'] for r in rows if r['median'] is not None and r['median'] == rows[0]['median']]
+    return dict(n=len(calls), rows=rows, leaders=leaders,
+                largest_counts_include_ties=True)
+
+
+def summary(slots, samples, qualification_passed=False):
     indexed = {s['id']: s for s in samples}
     if len(indexed) != len(samples) or set(indexed) - {s['id'] for s in slots}:
         raise ValueError('duplicate/unknown operation association')
@@ -212,8 +230,20 @@ def summary(slots, samples):
                     failures=sum(not s.get('qualified',False) for s in attempted),
                     missing_observations=sum(not s.get('qualified',False) for s in attempted),
                     intervals={k:stats([s['intervals'][k] for s in measured if k in s['intervals']]) for k in names})
+            detailed = [indexed[s['id']] for s in slots if s['id'] in indexed and
+                s['kind']==kind and s['variant']=='detailed' and not s['warmup'] and
+                (block is None or s['block']==block) and indexed[s['id']].get('qualified')]
+            row['ranking'] = ranking(detailed)
             row['ratio'] = ratio(distributions['reference'], distributions['detailed'])
             row['ratio']['passed'] &= complete
             rows.append(row)
-    return dict(verdict='qualified attribution' if all(r['ratio']['passed'] for r in rows) else 'no qualified attribution',
+    qualified = qualification_passed and all(r['ratio']['passed'] for r in rows)
+    consistency = {}
+    for kind in KINDS:
+        leaders = [r['ranking']['leaders'] for r in rows if r['kind']==kind]
+        stable = all(len(v)==1 and v==leaders[0] for v in leaders)
+        consistency[kind] = dict(consistent_unique_leader=leaders[0][0] if stable else None,
+                                leaders_by_block_and_pool=leaders)
+    return dict(verdict='qualified attribution' if qualified else 'no qualified attribution',
+                ranking_status='qualified' if qualified else 'descriptive only', consistency=consistency,
                 attempted=len(samples), unattempted=[s['id'] for s in slots if s['id'] not in indexed], rows=rows)
