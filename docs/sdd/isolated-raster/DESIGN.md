@@ -17,7 +17,14 @@ zero in 64 KiB chunks, including a one-byte overflow probe; reported size and EO
 hints are not trusted. Input and transport ceilings are 256 MiB. All provider
 limits remain mandatory. Devices retain ownership and open state; position is
 unspecified. Observed byte capture is not an atomic snapshot. Cancellation cannot
-interrupt a blocking caller-device read.
+interrupt a blocking caller-device read or runtime hashing. Capture and complete
+runtime verification run before the request deadline; there is no whole-call deadline.
+The control frame and borrowed capture are sent sequentially with bounded 64 KiB
+writes and queue draining. The capture stays alive throughout synchronous dispatch.
+This removes one full payload copy without imposing a total parent RSS bound.
+Caller output budgets, Qt's separate 256 MiB allocation ceiling, and the scope's
+2 GiB memory ceiling with zero swap are distinct controls. Scope memory does not
+include parent capture, verification, transport or output allocations.
 
 Inspection, structured metadata and decode return their existing provider types
 inside an optional result alongside `RuntimeStatus`. Local capture failures retain
@@ -46,8 +53,9 @@ owned output. Palettes, alpha/precision, resolution, offset, device pixel ratio 
 text metadata are preserved. Metadata exceeding the control bound is rejected,
 not truncated. Unsupported valid color spaces produce provider `Unsupported` and
 no image. Untagged and exact QColorSpace equality to one of Qt's eight named spaces
-are represented by validated identifiers. Pixel normalization and parent ICC
-parsing are forbidden.
+are represented by validated identifiers, including matching Adobe RGB. Other valid
+profiles are explicitly rejected rather than converted or dropped. Pixel normalization
+and parent ICC parsing are forbidden.
 
 ## Runtime and lifecycle
 
@@ -61,7 +69,9 @@ trusted-writer mutation. Rebuild the bundle after rebuilding the helper. No runt
 host dependency discovery occurs. Host `/usr/bin/systemd-run`, `systemctl` and
 `bwrap` are trusted launcher dependencies; selected codecs exist only in the bundle.
 
-A C++ gate starts inside a unique user systemd scope. The parent observes its cgroup
+The trusted C++ gate loads host libraries before sandbox entry and starts inside a
+unique user systemd scope. This host-loaded gate is part of the trusted boundary;
+only the sandboxed helper interprets image bytes. The parent observes its cgroup
 and checks `memory.max=2147483648`, `memory.swap.max=0` before releasing the gate.
 Bubblewrap unshares all namespaces, clears the environment, mounts only verified
 runtime files, proc/dev and private temporary storage, and makes the root read-only.
@@ -94,6 +104,10 @@ races, TERM-resistant descendants and poisoned discovery). The umbrella test
 Namespace integration needs a user systemd manager, cgroup v2 and working unprivileged
 namespaces. Container binaries are acceptance-only. Existing experimental evidence
 is reused for unchanged experiments; it does not qualify this transport or runtime.
+
+Current consumer/performance evidence is linked from the
+[completed umbrella report](../../../../docs/initiatives/image-isolation.md#corrected-experiment-0-completed-2026-11-09).
+Historical measurements below retain their original scope and limitations.
 
 ## Recorded acceptance (2026-11-08)
 

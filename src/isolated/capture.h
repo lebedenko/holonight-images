@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "limits.h"
 
 #include <QByteArray>
 #include <QIODevice>
@@ -7,7 +8,6 @@
 #include <atomic>
 
 namespace HolonightImages::Isolation {
-constexpr qint64 inputCeiling = 256LL * 1024 * 1024;
 enum class CaptureOutcome : unsigned char { Success, IoFailure, ResourceLimit, Cancelled };
 struct CaptureResult {
   CaptureOutcome outcome;

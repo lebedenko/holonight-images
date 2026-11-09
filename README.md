@@ -153,7 +153,22 @@ and construct `IsolatedClient` with the absolute staged
 `libexec/holonight-images/runtime` directory. Check `runtime == RuntimeStatus::Success`
 and `result` before examining the provider outcome. Missing/altered runtimes,
 namespace denial and infrastructure failures never fall back to in-process decoding.
-Runtime operations require bubblewrap, a user systemd manager and cgroup v2.
+Runtime operations require Linux unprivileged namespaces, bubblewrap, a user systemd
+manager and cgroup v2. The trusted gate loads host dependencies before entering the
+verified sandbox; bundled codecs process image bytes only inside that sandbox.
+
+Capture and complete runtime verification precede the 15-second request deadline
+(after launcher startup); cleanup has a separate five-second budget. Cancellation
+checks cannot interrupt blocking device reads or runtime hashing. Caller output
+budgets, the 256 MiB input/transport ceiling, Qt's 256 MiB allocation limit, and the
+2 GiB scope memory limit with zero swap serve separate purposes. Sending the borrowed
+capture removes one full payload copy; it does not bound total parent RSS. Scope
+memory excludes parent capture, verification and output allocations.
+
+Untagged pixels and exact matches to Qt's eight named color spaces, including Adobe
+RGB, are supported. Other valid profiles return `Unsupported`; they are neither
+converted nor silently dropped. See the [current consumer and performance evidence](../docs/initiatives/image-isolation.md#corrected-experiment-0-completed-2026-11-09)
+for measured behavior and its limits.
 
 For the complete native provider/installed-consumer/fault matrix, run
 `task test:isolated` (or `task test:isolated -- --build-type Release --build build/isolated-release`).

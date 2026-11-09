@@ -54,6 +54,14 @@ QString readyScope() {
 bool empty(const QString& group) {
   return !QFileInfo::exists(group) || read(group + "/cgroup.events").split('\n').contains("populated 0");
 }
+QByteArray boundaryPayload(qsizetype size) {
+  QByteArray payload(size, '\0');
+  payload.replace(0, 8, "payload:");
+  for (qsizetype i = 8; i < payload.size(); ++i) {
+    payload[i] = static_cast<char>(i % 251);
+  }
+  return payload;
+}
 }  // namespace
 int main(int argc, char** argv) {
   QCoreApplication app(argc, argv);
@@ -75,6 +83,12 @@ int main(int argc, char** argv) {
       require(denied.runtime == RuntimeStatus::Unavailable && !denied.result, "namespace denial did not fail closed");
       return 0;
     }
+    for (const auto size : {65536, 131072, 131089}) {
+      const auto result = request(fault, boundaryPayload(size));
+      require(
+          result.runtime == RuntimeStatus::Success && result.result && result.result->outcome == Outcome::Unsupported,
+          "chunk-boundary payload changed or protocol did not complete");
+    }
     for (const auto* mode : {"crash", "malformed", "partial"}) {
       const auto result = request(fault, mode);
       require(result.runtime == RuntimeStatus::ProtocolFailure && !result.result,
@@ -83,7 +97,10 @@ int main(int argc, char** argv) {
     const auto hang = request(fault, "hang");
     require(hang.runtime == RuntimeStatus::Timeout && !hang.result, "hang not timed out and cleaned");
     require(hang.elapsedMilliseconds >= 15000 && hang.elapsedMilliseconds < 20500, "timeout/cleanup budget");
-    for (const auto* mode : {"descendant", "race", "race", "race"}) {
+    QByteArray backpressure(1048576, 'x');
+    backpressure.replace(0, 12, "backpressure");
+    for (const auto& mode :
+         {QByteArray("descendant"), QByteArray("race"), QByteArray("race"), QByteArray("race"), backpressure}) {
       cancelled = false;
       std::atomic_bool done{false};
       QString group;

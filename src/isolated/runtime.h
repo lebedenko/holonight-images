@@ -2,7 +2,6 @@
 #pragma once
 #include "protocol.h"
 namespace HolonightImages::Isolation {
-void verifyRuntime(const QString& directory);
 struct TransportResult {
   RuntimeStatus status = RuntimeStatus::Unavailable;
   std::optional<Reply> reply;

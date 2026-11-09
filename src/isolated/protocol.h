@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "limits.h"
+
 #include <QJsonObject>
 
 #include <holonight_images/isolated.h>
 #include <stdexcept>
 
 namespace HolonightImages::Isolation {
-constexpr qint64 byteCeiling = 256LL * 1024 * 1024;
 constexpr qint64 controlCeiling = 65536;
 struct ProtocolError : std::runtime_error {
   using std::runtime_error::runtime_error;

@@ -25,6 +25,35 @@ QByteArray read(QFile& file, qint64 size) {
   }
   return data;
 }
+QByteArray readMode(QFile& input, qint64 length) {
+  const auto prefix = read(input, qMin<qint64>(12, length));
+  if (prefix == "backpressure") {
+    // Signal after reading only the selector; the remaining payload exceeds pipe
+    // capacity. Never consume it, so cancellation must interrupt request writes.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+    prctl(PR_SET_NAME, "hn-test-ready");
+    for (;;) {
+      pause();
+    }
+  }
+  return prefix + read(input, length - prefix.size());
+}
+int completePayload(const QByteArray& payload, Operation operation, QFile& input, QFile& out) {
+  for (qsizetype i = 8; i < payload.size(); ++i) {
+    if (payload[i] != static_cast<char>(i % 251)) {
+      return 94;
+    }
+  }
+  Reply reply;
+  reply.decoded.outcome = Outcome::Unsupported;
+  reply.decoded.inspection.outcome = Outcome::Unsupported;
+  QByteArray pixels;
+  const auto header = frame(replyControl(reply, operation, pixels));
+  if (out.write(header) != header.size() || !out.flush() || read(input, 1) != "A") {
+    return 95;
+  }
+  return 0;
+}
 }  // namespace
 int main(int argc, char** argv) {
   const std::span<char*> arguments(argv, static_cast<size_t>(argc) + 1);
@@ -52,7 +81,10 @@ int main(int argc, char** argv) {
   }
   qint64 length = 0;
   const auto request = parseRequest(parseControl(read(input, size)), length);
-  const auto mode = read(input, length);
+  const auto mode = readMode(input, length);
+  if (mode.startsWith("payload:")) {
+    return completePayload(mode, request.operation, input, out);
+  }
   if (mode == "crash") {
     return 93;
   }

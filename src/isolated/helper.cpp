@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "protocol.h"
-#include "runtime.h"
+#include "verification.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     }
   }
   QCoreApplication::setLibraryPaths({"/usr/lib/qt6/plugins"});
-  QImageReader::setAllocationLimit(256);
+  QImageReader::setAllocationLimit(qtAllocationMiB);
   try {
     QFile input;
     QFile output;

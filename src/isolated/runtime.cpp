@@ -2,22 +2,19 @@
 #include "runtime.h"
 
 #include "cleanup.h"
+#include "verification.h"
 
-#include <QCryptographicHash>
 #include <QDeadlineTimer>
-#include <QDirIterator>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonArray>
 #include <QProcess>
-#include <QSet>
 #include <QThread>
 #include <QUuid>
 #include <QtEndian>
 
 #include <span>
-#include <sys/stat.h>
 #include <utility>
 
 namespace HolonightImages::Isolation {
@@ -45,76 +42,6 @@ QProcessEnvironment environment() {
     }
   }
   return env;
-}
-// Keep the ordered security/lifecycle checks together for auditing.
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
-QStringList validate(const QString& root) {
-  if (!QDir::isAbsolutePath(root) || QFileInfo(root).isSymLink()) {
-    throw Failure{.status = RuntimeStatus::Unavailable, .message = "runtime must be an explicit absolute directory"};
-  }
-  struct stat manifestInfo{};
-  if ((lstat(QFile::encodeName(root + "/manifest.json").constData(), &manifestInfo) != 0) ||
-      !S_ISREG(manifestInfo.st_mode) || (manifestInfo.st_mode & 07777) != 0644) {
-    throw ProtocolError("runtime manifest missing or invalid");
-  }
-  const auto manifest = parseControl(fileBytes(root + "/manifest.json"));
-  integer(manifest, "version", 1, 1);
-  if (!manifest["files"].isArray()) {
-    throw ProtocolError("runtime inventory missing");
-  }
-  QSet<QString> expected{"manifest.json"};
-  QSet<QString> dirs;
-  QStringList binds;
-  for (auto value : manifest["files"].toArray()) {
-    if (!value.isObject()) {
-      throw ProtocolError("runtime file record");
-    }
-    const auto record = value.toObject();
-    const auto path = record["path"].toString();
-    if (!path.startsWith("usr/") || QDir::cleanPath(path) != path || path.contains(QChar::Null) ||
-        expected.contains(path)) {
-      throw ProtocolError("runtime path or collision");
-    }
-    expected.insert(path);
-    auto parent = QFileInfo(path).path();
-    while (parent != ".") {
-      dirs.insert(parent);
-      parent = QFileInfo(parent).path();
-    }
-    const auto absolute = root + "/" + path;
-    struct stat info{};
-    const auto mode = integer(record, "mode", 0644, 0755);
-    if ((mode != 0644 && mode != 0755) || (lstat(QFile::encodeName(absolute).constData(), &info) != 0) ||
-        !S_ISREG(info.st_mode) || std::cmp_not_equal((info.st_mode & 07777), mode) ||
-        info.st_size != integer(record, "size", 0, 1024LL * 1024 * 1024)) {
-      throw ProtocolError("runtime file attributes changed");
-    }
-    QFile file(absolute);
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!file.open(QIODevice::ReadOnly) || !hash.addData(&file) ||
-        QString::fromLatin1(hash.result().toHex()) != record["sha256"].toString()) {
-      throw ProtocolError("runtime file hash changed");
-    }
-    binds << "--ro-bind" << absolute << "/" + path;
-  }
-  for (const auto* required :
-       {"usr/libexec/holonight-images-helper", "usr/lib/qt6/plugins/imageformats/libqgif.so",
-        "usr/lib/qt6/plugins/imageformats/libqjpeg.so", "usr/lib/qt6/plugins/imageformats/libqtiff.so",
-        "usr/lib/qt6/plugins/imageformats/libqwebp.so"}) {
-    if (!expected.contains(required)) {
-      throw ProtocolError("runtime inventory incomplete");
-    }
-  }
-  QDirIterator entries(root, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
-                       QDirIterator::Subdirectories);
-  while (entries.hasNext()) {
-    const auto name = QDir(root).relativeFilePath(entries.next());
-    const auto info = entries.fileInfo();
-    if (info.isSymLink() || (info.isDir() ? !dirs.contains(name) : !info.isFile() || !expected.contains(name))) {
-      throw ProtocolError("unexpected runtime entry");
-    }
-  }
-  return binds;
 }
 QString groupOf(qint64 pid, const QString& unit) {
   for (const auto& line : fileBytes(QString("/proc/%1/cgroup").arg(pid)).split('\n')) {
@@ -172,7 +99,6 @@ class NativeCleanup final : public CleanupOperations {
   QElapsedTimer clock_;
 };
 }  // namespace
-void verifyRuntime(const QString& directory) { validate(directory); }
 
 // Keep the ordered security/lifecycle checks together for auditing.
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
@@ -188,7 +114,7 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
   try {
     QStringList binds;
     try {
-      binds = validate(runtime);
+      binds = verifyRuntime(runtime);
     } catch (const std::exception& e) {
       throw Failure{.status = RuntimeStatus::Unavailable, .message = QString::fromUtf8(e.what())};
     }
@@ -217,7 +143,7 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
                         "/usr/lib/qt6/plugins",
                         "--setenv",
                         "QT_IMAGEIO_MAXALLOC",
-                        "256",
+                        QString::number(qtAllocationMiB),
                         "--proc",
                         "/proc",
                         "--dev",
@@ -240,8 +166,8 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
                         "--scope",
                         "--quiet",
                         "--unit=" + unit,
-                        "--property=MemoryMax=2G",
-                        "--property=MemorySwapMax=0",
+                        "--property=MemoryMax=" + QString::number(scopeMemoryCeiling),
+                        "--property=MemorySwapMax=" + QString::number(scopeSwapCeiling),
                         runtime + "/usr/libexec/holonight-images-helper",
                         "--gate"};
     command += sandbox;
@@ -284,8 +210,8 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
         process.waitForFinished(5);
       }
     }
-    if (fileBytes(group + "/memory.max").trimmed() != "2147483648" ||
-        fileBytes(group + "/memory.swap.max").trimmed() != "0") {
+    if (fileBytes(group + "/memory.max").trimmed() != QByteArray::number(scopeMemoryCeiling) ||
+        fileBytes(group + "/memory.swap.max").trimmed() != QByteArray::number(scopeSwapCeiling)) {
       throw Failure{.status = RuntimeStatus::Unavailable, .message = "scope limits not enforced"};
     }
     auto receive = [&](qint64 size) {
@@ -319,24 +245,27 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
       throw Failure{.status = RuntimeStatus::Unavailable, .message = "sandbox helper failed before readiness"};
     }
     result.startup = elapsed.elapsed();
-    QByteArray outgoing = frame(requestControl(request, input.size()));
-    outgoing += input;
-    qint64 sent = 0;
-    while (sent < outgoing.size() || (process.bytesToWrite() != 0)) {
-      check();
-      if (sent < outgoing.size() && process.bytesToWrite() < 65536) {
-        const auto written = process.write(std::span<const char>(outgoing).subspan(sent).data(),
-                                           qMin<qint64>(65536, outgoing.size() - sent));
-        if (written < 0) {
-          throw ProtocolError("helper write failed");
+    const auto header = frame(requestControl(request, input.size()));
+    auto send = [&](const QByteArray& segment) {
+      qint64 sent = 0;
+      while (sent < segment.size() || (process.bytesToWrite() != 0)) {
+        check();
+        if (sent < segment.size() && process.bytesToWrite() < 65536) {
+          const auto written = process.write(std::span<const char>(segment).subspan(sent).data(),
+                                             qMin<qint64>(65536, segment.size() - sent));
+          if (written < 0) {
+            throw ProtocolError("helper write failed");
+          }
+          sent += written;
         }
-        sent += written;
+        process.waitForBytesWritten(5);
+        if (process.state() == QProcess::NotRunning) {
+          throw ProtocolError("helper exited during request");
+        }
       }
-      process.waitForBytesWritten(5);
-      if (process.state() == QProcess::NotRunning) {
-        throw ProtocolError("helper exited during request");
-      }
-    }
+    };
+    send(header);
+    send(input);  // Borrow the capture, which remains alive until dispatch returns.
     const auto length = qFromBigEndian<quint32>(receive(4).constData());
     if ((length == 0U) || length > controlCeiling) {
       throw ProtocolError("response control limit");
