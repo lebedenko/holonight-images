@@ -1599,3 +1599,38 @@ Any later design must preserve fresh per-operation scopes/helpers, full validati
 limit verification before gate release, sandbox/descriptor/environment policy,
 protocol, cancellation/deadlines, acknowledgement ordering and verified hierarchical
 cleanup. This recommendation authorizes neither that experiment nor implementation.
+
+### Launcher-readiness profiling specification (2026-11-09)
+
+The separate [bounded profiling design](../launcher-readiness-profile/DESIGN.md)
+now specifies the proposed observations for source inspection, source decode and
+cached PNG decode independently. It preserves the historical findings above and
+the hash-candidate closure. Three serial blocks provide 180 measured calls and
+27 excluded warm-ups per variant, comparing a minimal outer-timer reference with
+detailed instrumentation from one archived Images revision. Median and p95
+detailed/reference ratios must each be at most 1.10 for every kind in every block
+and pooled by kind; missing evidence or failed gates means no qualified attribution.
+
+The specification covers shared-clock qualification, bounded stderr records that
+survive gate exec, overlap accounting, disposable valid runtime bundles, future
+functional/failure checks and bounded hierarchical cleanup. Bubblewrap and loader
+work remain combined where observations cannot separate them. Full validation,
+fresh scopes/helpers and existing security/protocol/lifecycle contracts remain
+required. Generation reuse remains **no-go**; hash tuning, storage mechanisms,
+session reuse and prestarted workers stay closed. This is documentation only,
+ready for separate implementation review, without authorizing implementation or
+execution. No frozen evidence, Grub, pins, production code or installation changes.
+
+
+### Bounded launcher-readiness execution outcome (2026-11-09)
+
+The separately authorized [private implementation and one bounded run](../launcher-readiness-profile/DESIGN.md#execution-results-2026-11-09)
+produced **no qualified attribution**. Both host-native Release variants built;
+qualification stopped after five passing cases and a sixth fault-controller race
+that cancelled before helper entry. Hierarchical cleanup still succeeded (TERM,
+KILL, launcher reaped, cgroup removed in 1.021 seconds). Thirty qualification calls
+and all 414 measurement/warm-up slots remained unattempted. There are no measured
+interval distributions or overhead ratios. The executed evidence is preserved;
+the controller correction has offline regression/syntax verification only, with
+no native retry. Full validation and generation reuse **no-go** remain unchanged;
+no historical speedup claim or reopening of closed optimization directions.
