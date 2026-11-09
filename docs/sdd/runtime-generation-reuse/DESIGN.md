@@ -1,8 +1,10 @@
 # Runtime-generation reuse: design and feasibility
 
-Date: 2026-11-09. Status: design complete; **no-go for a reuse prototype with the
-current launch and installation contracts**. Retain full per-operation validation.
-An immutable snapshot is a conditional design direction, not a qualified approach.
+Date: 2026-11-09. Status: explicit-refresh contract approved; **sealed-memfd
+feasibility probe stopped with no-go at the metadata immutability gate**.
+Metadata contract review complete: retain exact modes; no narrowing proposed.
+Retain full per-operation validation in production. An immutable snapshot remains
+a conditional design direction, not a qualified approach.
 No production code, public API, packaging, deployment or consumer behavior changes
 are part of this decision.
 
@@ -14,7 +16,9 @@ is an enforceably immutable generation consumed by both the unsandboxed launcher
 gate and every sandbox file, without reopening mutable source names. A second
 prerequisite is a deliberate freshness contract: continuing an old snapshot after
 source corruption or replacement would change today's per-operation rejection
-behavior. Neither prerequisite is supplied by the present installer or launcher.
+behavior. Explicit refresh is now approved for this experiment and a later
+qualified prototype; it is not implemented in production. The immutable-execution
+prerequisite remains unmet by the tested mechanism.
 
 The manifest and package producer are trusted. Hashes establish consistency with
 that manifest, not authenticity: an attacker able to replace both can supply a
@@ -26,7 +30,7 @@ this does not grant that tree an independent authenticity guarantee.
 
 | Threat | Current guarantee | Required for reuse |
 | --- | --- | --- |
-| Accidental corruption of a quiescent package | Each dispatch checks manifest, inventory, regular-file modes, sizes and SHA-256; bad input is unavailable | Preserve checks on acquisition, and explicitly settle how later source corruption revokes eligibility |
+| Accidental corruption of a quiescent package | Each dispatch checks manifest, inventory, regular-file modes, sizes and SHA-256; bad input is unavailable | Preserve checks on construction/refresh; a ready immutable generation stays eligible until explicit refresh |
 | Ordinary concurrent upgrade, deletion or relocation | No atomic generation across validation and launch; may reject, fail to launch or consume changed paths | Acquire one coherent validated generation; replacement never changes an existing lease; new acquisition obeys explicit publication/revocation ordering |
 | Hostile runtime-tree mutation | No complete race defense; coherent manifest replacement is not authenticated | Freeze captured bytes before validating them and consume those same bytes; no mutable alias or name may substitute them after publication |
 
@@ -34,7 +38,7 @@ this does not grant that tree an independent authenticity guarantee.
 | --- | --- | --- |
 | Full validation every operation | Existing source and Experiment 0 establish cost and quiescent checks; still has path races | Keep as reference, without claiming race freedom |
 | Reuse with change detection | Path, size, mtime, mode and watcher events do not bind later execution; same-size edits/restored mtime and races remain. Hashing every file again removes most intended savings and still leaves the launch race | Reject under the stated model |
-| Validated immutable snapshot | Can conceptually separate source from execution, but present transport closes descriptors and launches/mounts by path; acquisition, immutability, gate execution and freshness are unproven | No-go pending the prerequisites below |
+| Validated immutable snapshot | Explicit refresh settles freshness; tested parent-owned sealed memfds leave exact mode metadata mutable; end-to-end execution remains unproven | No-go pending the prerequisites below |
 
 Neither read-only permissions nor a read-only sandbox bind is evidence that a
 host writer cannot alter backing content. An open descriptor pins a file object,
@@ -112,7 +116,7 @@ The following is a future interface sketch, not an API introduced here:
 // Consumer-owned lifetime; provider implements synchronous generation mechanics.
 RuntimeGenerationOwner(sourceSelection, generationLimits);
 acquire(cancelled) -> GenerationLease | RuntimeFailure;
-replaceSource(newSelection, cancelled) -> GenerationId | RuntimeFailure;
+refresh(sourceSelection, cancelled) -> GenerationId | RuntimeFailure;
 revoke(selectionEpoch); // prevents new leases; does not interrupt existing work
 IsolatedClient(GenerationLease); // cheap shared immutable handle, fresh helper/call
 ```
@@ -161,27 +165,28 @@ use a manifest's declared digest as proof that bytes have been validated.
    guarantees. Neither is supplied here. Changing only sandbox binds leaves the
    earlier unsandboxed gate vulnerable. Host loader/tool trust must stay explicit;
    any attempt to snapshot that base is a separate packaging/launcher decision.
-5. **Invalidate:** do not infer freshness from a cached pathname. An explicit
-   source replacement/revocation advances the epoch and blocks new leases from
-   the old epoch before validating its replacement. Failed replacement stays
-   unavailable for new work, with no stale fallback. Existing leases may finish
-   only from the old immutable bytes. Relocation requires explicit new selection
-   and validation; matching content may be deduplicated only after validation.
+5. **Explicit refresh:** source edits, deletion, replacement or relocation do not
+   automatically invalidate a ready generation; new acquisitions keep using it
+   until explicit refresh/revocation. Serialize refresh requests. Refresh advances
+   the selection epoch and blocks new leases before validating the replacement.
+   Success publishes the replacement; failure leaves new acquisitions unavailable,
+   without stale fallback. A later explicit refresh can recover. Existing leases
+   may finish only from their original immutable generation. Selecting a relocated
+   source requires explicit refresh and validation; content identity excludes its
+   path. Refuse further refresh work while retained generations exhaust the bounds
+   below, without allocating another generation or evicting live leases.
 6. **Retire/release:** replacement makes the old generation retired; last lease
    release after terminal cleanup frees it. Dropping an owner cannot unmap live
    launch inputs. Cancellation of an operation retains its lease through cleanup;
    cleanup failure remains `CleanupFailure`, never a successful image result.
 
-**Freshness is an unresolved prerequisite, not an implementation detail.** An
-immutable snapshot can safely execute old bytes after the source is corrupted,
-but today's next call would validate and reject that source. The current installer
-has no authoritative revocation channel and allows file-by-file replacement.
-Preserving immediate arbitrary-source-change rejection requires per-acquisition
-full verification or another demonstrated authoritative mechanism. Alternatively,
-an explicitly approved generation-pinned contract could permit old immutable
-bytes until explicit refresh/revocation, paired with a transactional publisher.
-That would change observable upgrade/corruption semantics and must not be silently
-introduced. TTLs, restart-only refresh and missed watcher events are not substitutes.
+**The generation-pinned explicit-refresh contract is approved.** This deliberately
+permits old validated immutable bytes after source corruption, unlike today's
+per-operation rejection. Approval does not qualify the storage or implement reuse.
+There is no automatic installer revocation channel, TTL or watcher-based freshness
+check. A transactional source publisher is not required to keep an already captured
+generation usable: replacement capture must match its captured manifest or fail
+closed. This does not establish authenticity or an atomic source snapshot.
 
 ## Failures and resource bounds for a later prototype
 
@@ -190,8 +195,9 @@ returns `Unavailable` without a provider result and without source-path fallback
 Malformed worker replies remain `ProtocolFailure`. A pre-launch cancelled caller
 returns `Cancelled`; post-launch cancellation follows existing cleanup, whose
 failure takes precedence. No failure publishes or poisons a reusable ready entry;
-recovery requires an explicit new successful acquisition/selection. Do not cache
-negative results indefinitely or retry a changing tree inside one request.
+recovery after failed refresh requires a later explicit successful refresh. Do not
+automatically retry a changing tree inside one request or silently serve old leases
+to new acquisitions while unavailable.
 
 Proposed initial limits (to qualify, not existing guarantees): one active, one
 retired and one building generation per owner; at most 128 files and 128 MiB
@@ -256,9 +262,235 @@ freezing, contention, per-launch binding and revocation reduce those savings.
 Read-only summation of the frozen B2 installed manifest gives **60 entries,
 87,198,752 payload bytes and 10,773 manifest bytes**. These fit the proposed
 single-generation caps but do not establish snapshot setup cost, descriptor
-needs or memory residency. Source inspection already establishes why current
-paths cannot qualify; no disposable probe was necessary and no launch guarantee
-is claimed from a toy test. No new benchmark matrix or measurement run was made.
+needs or memory residency. The subsequent storage probe below does not qualify
+full-generation capture or launch and runs no benchmark matrix.
+
+## Sealed-memfd feasibility result (2026-11-09)
+
+**No-go for a later production prototype using this mechanism under the required
+exact-mode immutability contract.** The approved experiment stops at its first
+failed storage guarantee; it does not explore alternative implementations.
+
+Evidence is in ignored Images `build/runtime-memfd-feasibility-eYAKqdW8/`:
+`probe.cpp`, `run.py`, `commands.txt`, `provenance.json`, `results.json`,
+`execution.json`, `verification.json`, build/diagnostic logs, copied manifest and
+before/after source inventories. Reproduce with `python3 run.py` from that directory.
+The initial link attempt needed `-fPIC` for host Qt; its diagnostic is retained in
+`build-initial-no-pic.log`. The corrected build passed `-Wall -Wextra -Werror`.
+
+Input was the frozen umbrella
+`build/preview-scheduler-f2c1ty8f/B2/prefix/libexec/holonight-images/runtime`.
+The runner read and hashed all 60 declared payloads, checked their declared modes
+and sizes, and copied only the helper into a disposable source tree for this
+early capability check. It did not run the frozen helper. The helper's SHA-256 was
+`87293cfd1128c3b1f05644bdd9c8051d230a7e7ddc40189b9b487d17d853551b`;
+exact manifest, probe and runner hashes are in provenance. Before/after inventory
+records matched: no frozen or installed runtime was changed.
+
+Host: Linux `7.2.14-arch1-1`, x86_64, GCC `16.2.1`, Qt Core `6.12.0`.
+The private C++/Qt probe copied the 250,344-byte helper to a parent-owned memfd,
+set mode `0755`, established seals, then compared captured bytes with the copied
+input. It tested `MFD_EXEC | MFD_ALLOW_SEALING | MFD_CLOEXEC` with both content-only
+seals and content seals plus `F_SEAL_EXEC`. A separate same-user QProcess attempted
+chmod through `/proc/<owner-pid>/fd/<fd>`, with `CloseFileDescriptors` from fd 3
+and `CreateNewSession` preserved. No parent-memory modification or inherited
+generation descriptor was needed for those attempts.
+
+| Observation | Content seals (`0x0f`) | With `F_SEAL_EXEC` (observed `0x3f`) |
+| --- | --- | --- |
+| Write, shrink, grow, shared writable mapping | All rejected with `EPERM` | All rejected with `EPERM` |
+| chmod `0755` to `0644` through owner proc path | Succeeded | Rejected with `EPERM` |
+| chmod to `0777` through owner proc path | Succeeded | Succeeded |
+| Captured bytes after attempts | Same SHA-256 | Same SHA-256 |
+
+The execution-bit seal therefore did not freeze exact permission metadata. This
+is a metadata counterexample, not evidence that content seals were bypassed or
+that arbitrary helper bytes executed. Exact validated modes are part of the
+required contract; silently weakening that requirement would be a different
+experiment. The failed guarantee is sufficient to stop before full capture and
+validation, executable loading or bubblewrap mounting.
+
+Resource observations are limited to this storage check: one 250,344-byte memfd
+at a time, two sequential variants, six chmod children all exited and reaped,
+and parent descriptor counts restored from 5 to 5. The probe also holds ordinary
+QByteArray copies; this is not a generation memory measurement. `execution.json`
+records cumulative child maximum RSS including compilation, explicitly not runtime
+RSS. No scope, sandbox or runtime helper was launched. No hierarchical cleanup
+claim follows from reaping these simple children.
+
+Full manifest/inventory validation of a sealed generation, gate and sandbox
+execution identity, known protocol pixels, concurrent acquisition, explicit refresh,
+cancellation, owner teardown and repeated bounded lifecycle tests were **not
+reached**. The 128-file, 128-MiB, 256-descriptor, 64-KiB-manifest limits and one
+active/retired/building lifecycle remain unqualified requirements, not measured
+guarantees. No private owner was implemented after the prerequisite failed.
+This early stop follows the supplied stop gate and proportional verification;
+there is no production change, performance claim, fallback or package rebuild.
+
+## Metadata contract review (2026-11-09)
+
+**Recommendation: retain exact mode immutability and the no-go.** Exact read/write
+bits are not intrinsically necessary to keep sealed bytes unchanged. That narrower
+fact does not establish equivalent execution integrity: special bits, ownership,
+security attributes and legitimate descriptor access have not been qualified.
+This review therefore does not propose replacement contract wording or authorize
+another memfd launch experiment. A future narrowing requires a separately stated
+contract and explicit approval; the original probe remains no-go under its original
+contract even if a different contract is later approved.
+
+### Three distinct kinds of metadata
+
+`runtime.cpp::validate` checks source regular-file type, exact `07777` mode, size,
+hash and inventory. It does **not** validate UID/GID, ACLs or security xattrs.
+Those omissions are observations about current code, not guarantees that such
+attributes are harmless. Acquisition must retain its existing source mode and
+inventory checks, including rejecting special bits. Capturing bytes into new
+storage must not implicitly copy source ownership, ACLs or file capabilities.
+
+Generation identity records the **validated source modes**, manifest bytes,
+destination names and content digests described above. Those immutable records
+are distinct from a live backing inode's mode/owner/xattrs. Replacing an identity
+record with a later `fstat` result would silently change the identity definition;
+hashing metadata once does not enforce it. Source location remains excluded.
+
+At launch the kernel uses live backing metadata, not the generation digest.
+The unsandboxed gate is exec'd before its `main` waits for `G`; its ELF interpreter
+and dependencies load in the host environment. The parent’s scope-limit check is
+too late to protect that execution. Bubblewrap subsequently opens bind sources;
+read-only mounts restrict that mount's operations, not mutations through another
+host alias. Inside the sandbox the interpreter, libraries and Qt plugins open and
+map the bound objects. Library permission denial must not silently select another
+dependency or lose a required codec. Existing minimal environment and inventory
+are necessary but do not prove the proposed descriptor path works end to end.
+See `runtime.cpp::dispatch`, `helper.cpp::main`, and the primary descriptions of
+[ELF execution](https://man7.org/linux/man-pages/man2/execve.2.html) and
+[loader search and secure execution](https://man7.org/linux/man-pages/man8/ld.so.8.html).
+
+### Actors and access paths
+
+| Actor | In-scope capability | Boundary and required outcome |
+| --- | --- | --- |
+| Source-tree writer | Replace names, bytes, modes and source metadata during capture or later | Captured content must match the captured trusted manifest; later source mutation cannot redirect a lease. A coherently replaced manifest is still not authenticated. |
+| Separate same-user process | Follow owner proc descriptors where access checks allow; chmod was observed without inherited FDs or parent-memory access | Remains in scope. Seals must protect bytes through every alias; metadata protection cannot assume this actor is absent. Include already-open aliases when evaluating a new restriction. |
+| Compromised sandbox helper | Operate on visible mounts/descriptors, attempt metadata changes and launch descendants | Read-only binds and private proc are intended boundaries; retained host FDs, pre-namespace source opens and namespace capabilities need explicit qualification. Sandbox isolation is not proof about the earlier host gate. |
+| Trusted parent and launch infrastructure | Construct storage, choose mappings, retain/release descriptors and start tools | Must enforce publication, identity and cleanup. Parent-memory takeover and root/kernel compromise remain excluded; ordinary proc access does not become excluded merely because it targets the parent. |
+
+### Invariants, effects and evidence
+
+The table separates enforced observations from prerequisites. “Unqualified” means
+no guarantee is claimed for the preserved host or any later configuration.
+
+| Invariant / attribute | Purpose and mutation effect | Enforcement and remaining uncertainty |
+| --- | --- | --- |
+| Exact acquisition modes and inventory | Reject malformed sources and special bits; fixes identity inputs | Existing validator plus future frozen-capture validation. Current path checks still race; snapshot capture remains unimplemented. |
+| Fixed bytes and lengths | Prevent code substitution and changed mapped pages | Preserved probe rejected write/shrink/grow/shared writable mapping; [v7.0 `memfd_add_seals`](https://raw.githubusercontent.com/torvalds/linux/v7.0/mm/memfd.c) makes seals inode-wide and irreversible. Require explicit write/grow/shrink/seal seals on every file, including non-executable libraries; `F_SEAL_FUTURE_WRITE` alone is insufficient. Full generation remains unqualified. |
+| Read/write permission bits | Adding write permission does not undo content seals. Read removal can deny later opens; read addition can broaden disclosure when an access path exists. Neither alone substitutes bytes | `0755 → 0777` is observed. [chmod semantics](https://man7.org/linux/man-pages/man2/chmod.2.html) concern access permissions, not content sealing. Runtime payloads start world-readable, but this is no confidentiality guarantee for unrelated owner descriptors. Required-library denial/fallback behavior is unqualified. |
+| Execute bits | Prevent adding/removing direct execution permission | [v7.0 `shmem_setattr`](https://raw.githubusercontent.com/torvalds/linux/v7.0/mm/shmem.c) checks only changes in `0111` for `F_SEAL_EXEC`. Preserved execute-removal rejection agrees. Library executable mappings are a separate operation: [mmap](https://man7.org/linux/man-pages/man2/mmap.2.html) has descriptor and mount constraints; a mode without X is not a general code-execution prohibition. |
+| Setuid/setgid; sticky bit | Set-ID can change credentials and thereby loader behavior; sticky on a regular payload is not a byte-substitution mechanism | The `0111` seal check does not cover these bits. [v7.0 `setattr_prepare`](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/attr.c) applies owner/capability and group rules, not exact-mode sealing. Same-user ownership alone is not proof that set-ID is ineffective in every consumer credential context. No special-bit probe exists. |
+| UID/GID | Controls DAC and meaning of set-ID; group changes can alter access/disclosure without changing content | The same [v7.0 attribute checks](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/attr.c) restrict arbitrary UID changes but permit an owner to select an eligible group. Content seals do not establish fixed ownership. Capability-bearing/idmapped consumers are unqualified. |
+| ACLs, `security.capability`, LSM/IMA labels, `user.*` / `trusted.*` | ACLs affect access; capabilities can affect privilege on exec; security policy may permit/deny or alter execution context. Ordinary opaque user attributes are not ELF bytes | [v7.0 xattr checks](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/xattr.c) delegate security/system policy and restrict trusted attributes; [capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html) governs file capabilities. There is no demonstrated metadata seal. Actual memfd ACL/xattr support, permitted setters and LSM effects must be enumerated on the target host; unsupported operations must be distinguished from denied ones. |
+| Stable object-to-destination mapping | Prevent FD reuse/name replacement redirecting gate or binds | Trusted parent must retain each exact object until terminal cleanup; namespace map must be immutable. Current probe does not test transport, mount identity or descriptor-number reuse. |
+| No metadata-induced privilege gain or alternate loading | Protect execution before and after sandbox entry | A future relaxation would need protections effective **before the first gate exec**, plus verified loader identity and failure behavior. Exact modes alone also do not establish an xattr/ownership policy. These are prerequisites, not properties supplied by content seals. |
+
+### Proc restrictions and privilege protections are not drop-in fixes
+
+[v7.0 proc link resolution](https://raw.githubusercontent.com/torvalds/linux/v7.0/fs/proc/base.c)
+uses `PTRACE_MODE_READ_FSCREDS`; [proc_pid_fd](https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html)
+also distinguishes proc access from permission to reopen the backing inode.
+[ptrace access checks](https://man7.org/linux/man-pages/man2/ptrace.2.html) include
+credentials, target dumpability, capabilities and LSM policy. Setting the owner
+non-dumpable denies ordinary separate launch descendants as well as the attacker;
+ancestry does not override that check. Previously acquired aliases are not revoked
+by denying future proc lookup. Yama's attach restrictions are not a solution:
+[v7.0 Yama](https://raw.githubusercontent.com/torvalds/linux/v7.0/security/yama/yama_lsm.c)
+applies its scope restriction to `PTRACE_MODE_ATTACH`, whereas this link check uses
+READ. `PR_SET_PTRACER` is not a general exemption from dumpability checks.
+
+The current QProcess closes FDs from 3 and then starts systemd-run in scope mode.
+A parent-proc-path design would require systemd-run's gate exec and bubblewrap's
+bind-source lookup to reach the owner. Blocking those paths blocks that design.
+Keeping inherited FDs, explicit transfer or a separate owner would require a new
+transport proof across every exec, credential and namespace transition, including
+whether a recipient's own proc descriptors expose the objects again. No such
+change is proposed here. Process-wide dumpability changes also affect consumers
+outside Images and cannot be introduced as an incidental fix.
+
+[v7.0 `no_new_privs`](https://www.kernel.org/doc/html/v7.0/userspace-api/no_new_privs.html)
+can suppress exec-time set-ID and file-capability gains and is inherited, but must
+be effective before gate exec. Setting it in the gate is too late. It does not
+freeze metadata, remove existing privileges or establish all LSM transitions.
+It could also prevent a setuid bubblewrap configuration from acquiring privileges
+it needs. A user-namespace-based unprivileged configuration and the actual
+QProcess → systemd scope → gate → bubblewrap chain need qualification before this
+could support a narrower contract. Do not infer `nosuid` from `--ro-bind`, or assume
+sandbox protections apply to host execution through the original memfd mount.
+
+### Version and host limits
+
+The versioned source review above is **Linux v7.0**, not a claim to have audited
+the probe's Arch `7.2.14-arch1-1` source and patches. Local headers do not supply
+the relevant implementation files; matching host source/configuration remains a
+prerequisite. The preserved evidence establishes only the recorded host's tested
+operations, with `vm.memfd_noexec=0`, UID 1000 and the recorded Qt/compiler versions.
+[v7.0 memfd execution controls](https://www.kernel.org/doc/html/v7.0/userspace-api/mfd_noexec.html)
+describe explicit `MFD_EXEC`, `MFD_NOEXEC_SEAL` and hierarchical PID-namespace
+policy. A policy that forbids executable memfds must fail closed, without reverting
+to mutable files or omitted flags. Older kernels lacking required seals, different
+proc restrictions, capability-bearing launchers, setuid bubblewrap, idmapped
+mounts and unreviewed LSM policies are unsupported by this evidence. Their failure
+or compatibility cannot be inferred from the single successful chmod path.
+
+### Bounded next experiment specification — not executed or authorized here
+
+The unmet property is an enforceable binding of validated bytes **and exact modes**
+to every execution/mount consumer, with a qualified ownership/security-attribute
+policy. A different mechanism must prevent hostile metadata mutation through all
+aliases while preserving legitimate consumption. Repeating the same memfd storage
+check cannot meet that property. Use the following ordered gates for a separately
+scoped candidate; stop at the first failure and retain evidence, without fallback.
+
+1. **Static mechanism gate:** identify the new enforcement mechanism and matching
+   host kernel/tool sources, credentials, mount flags, xattr/LSM policy and alias
+   graph. Explain why unauthorized mutation is impossible and how legitimate
+   consumers obtain access. If that cannot be shown, stop without native work.
+   Any narrower contract must first be written and explicitly approved.
+2. **Metadata-only gate:** disposable helper/library copies, one candidate at a
+   time, at most four mutation children and the existing byte/FD caps. Attempt
+   read/write removal and addition while preserving X (`0111`, `0555`, `0777` for
+   a `0755` helper), execute removal/addition on helper and `0644` library,
+   setuid/setgid/sticky addition, eligible GID changes, ACLs and relevant xattrs.
+   Test separate same-user owner-proc access and previously opened aliases.
+   Exact mode mutation is an immediate no-go under the retained contract;
+   unexplained metadata effects also stop. Record errno, before/after metadata,
+   identity, child reaping and descriptor baseline. Reuse existing memfd write
+   and seal observations; do not rerun them absent changed relevant inputs.
+   Bound each case to 15 seconds plus five seconds for cleanup; failure to
+   terminate and reap within that budget stops the experiment.
+3. **Transport gate:** only after storage passes, exercise the real QProcess /
+   systemd scope / gate / bubblewrap chain with diagnostic disposable binaries.
+   Test both attacker denial and legitimate consumers at deterministic barriers;
+   any proc restriction that breaks consumers stops. Verify gate object identity
+   before its code runs, host interpreter/dependencies, and all sandbox bind,
+   interpreter/library/plugin identities. Prove no FD reuse redirection or leaked
+   host handles. Removing required access must produce failure, never alternate
+   loading, source-path fallback or a partial successful result.
+4. **Single-generation functional gate:** only after transport passes, capture
+   the bounded exact inventory and compare independently known protocol pixels.
+   Check special-bit/attribute attempts cannot change credentials, capabilities
+   or loader selection. Preserve deadlines, scope limits and cleanup-failure
+   precedence; injected launch/read/mount failures must release unpublished
+   resources and reap all descendants before leases release.
+5. **Lifecycle gate:** at most ten deterministic acquire/refresh/retire cycles
+   before considering any larger suite. Cover held old leases, failed refresh
+   without stale fallback, permission failures, cancellation and owner teardown;
+   count descriptors, backing bytes and scopes against the stated limits. Stop
+   on leak, unbounded wait or identity mismatch. Performance measurement and
+   broader acceptance are separate later decisions.
+
+Review verification: read current validator/launcher/gate code and preserved
+`provenance.json`/`results.json`; cross-check versioned primary sources; review
+both design documents and run whitespace checks. No probe, native launch,
+lifecycle test, build or package test was run for this documentation review.
 
 ## Required future acceptance cases
 
@@ -276,17 +508,19 @@ fault and relocated-package tests are reference behavior, not coverage of reuse.
 | Directory replacement and same-path upgrade | Barrier before capture, after capture, after validation and before launch; no mixed or substituted execution; replacement obeys epoch ordering and failed refresh has no stale fallback |
 | Mutation between validation and launch | Independently target gate, interpreter, libraries, plugins and every bind class; prove launch uses exact validated immutable objects despite source rename/write/unlink; failed mechanism must fail before executing unvalidated gate bytes |
 | Concurrent source capture and hostile writes | Mismatch fails without retry; a self-consistent replacement is not claimed authentic; captured content is frozen before hashing and never gains a writable alias |
-| Invalid generation then recovery | All joined callers receive failure without ready cache entry; explicit corrected acquisition validates anew and returns independently known pixels |
+| Invalid generation then recovery | All joined callers receive failure without ready cache entry; a later explicit refresh validates the corrected source and subsequent acquisition returns independently known pixels |
 | Relocation | New explicit relocated prefix, including spaces, validates; identity excludes prefix; active old leases survive source removal from immutable backing only |
 | Cancellation and owner teardown | Cancel one waiter without harming others; last-waiter cancellation frees unpublished storage; cancel at publication/launch/reply barriers; lease survives until cleanup/reaping and no cancelled result leaks |
 | Retirement and resource exhaustion | Hold old in-flight leases across repeated refresh; enforce generation/byte/FD/waiter caps, including failed builds; release after drain; refusal does not corrupt the active generation |
 | Sandbox and cleanup regressions | Per-operation namespaces, minimal environment, mount allowlist, limits, readiness gate, timeout, descendant cleanup and cleanup-failure precedence remain intact; bounded resources after many acquire/release cycles |
 
 Before a go decision, demonstrate an immutable storage/namespace mechanism on the
-supported host, an end-to-end launch transport including the gate, enforceable
-bounds/cancellation, and an approved publisher/freshness contract. Then run the
+supported host, an end-to-end launch transport including the gate and enforceable
+bounds/cancellation under the approved explicit-refresh contract. Then run the
 focused installed/relocated and runtime acceptance appropriate to those changes.
-Do not introduce session reuse or prestarted workers. This design-only step uses
-document review, evidence arithmetic and whitespace checks, as requested; builds,
-provider CTest and installed-package execution are deferred because no executable
-or installation behavior changed.
+Do not introduce session reuse or prestarted workers. Historical feasibility
+verification was the private host-native storage probe; this contract review
+reuses that evidence and adds source/document review and whitespace checks only.
+Provider CTest and installed-package execution are deferred because the
+storage prerequisite failed and no production executable or installation behavior
+changed.
