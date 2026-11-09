@@ -1053,3 +1053,142 @@ native builds, agreement checks, bounded measurements, evidence review and white
 checks; the full preview matrix and installed-package suite were not rerun because
 production and installation behavior did not change. No deployment, publication,
 commit or pin update was performed.
+
+## Qt SHA-256 path review (2026-11-09)
+
+**Stop with no qualified candidate.** The installed binary confirms the small
+device-read loop and OpenSSL EVP path, but exact distribution-source provenance
+remains unresolved. The single reviewed candidate is a bounded 64 KiB streaming
+loop feeding the same `QCryptographicHash::Sha256` object. It is not implemented
+or qualified for an experiment by this review. Production validation and public
+APIs remain unchanged; generation reuse remains no-go. All earlier measurements
+above remain historical evidence, without recalculation.
+
+Evidence is in ignored Images `build/qt-sha256-review-20261109/`: `commands.json`,
+package ownership/version records, `identity.json`, ELF notes/dependencies,
+targeted disassembly, source/patch copies, primary package recipes and review
+findings. Addresses below are ELF virtual addresses for this exact QtCore, not
+runtime addresses. Nearest exported symbol labels in stripped disassembly are
+not reliable names for private functions; call targets and instructions were
+used instead.
+
+| Installed artifact | Package | SHA-256 | ELF build ID |
+| --- | --- | --- | --- |
+| `/usr/lib/libQt6Core.so.6` → `/usr/lib/libQt6Core.so.6.12.0` | `qt6-base 6.12.0-3` | `10635d6f11ff08ed0d81ce3dd6b461b54e90ce29b23aa45d85ad4d50074e022e` | `431db715687f9ab0ce66ba4379d344d7b672b510` |
+| `/usr/lib/libcrypto.so.3` (resolved path unchanged) | `openssl 3.6.5-1` | `a75a864dcda6ef9e4dc29fad4b7988ca832b904c3915a63c920062c40763dae1` | `1a725f84d7c552e667ab3d384230a9b5e8597acd` |
+
+Installed headers enable `openssl_hash`, `openssl_linked` and `opensslv30`;
+`opensslv11` is disabled. QtCore has a `DT_NEEDED` entry for `libcrypto.so.3`.
+These establish compiled support and the installed library identities, not the
+library mapping or provider selected in a historical measurement process.
+
+The clean cached Qt checkout is tag `v6.12.0`, commit
+`025bdad181de241e81bf853c8a2d7bf3d19261a9`, with origin
+`https://code.qt.io/qt/qtbase.git`. The freshly retrieved
+[Arch Qt 6.12.0-3 recipe](https://gitlab.archlinux.org/archlinux/packaging/packages/qt6-base/-/raw/6.12.0-3/PKGBUILD)
+matches the cached recipe byte-for-byte (SHA-256
+`fa3c902bb00fb1f5a3b7021d5016d6ef6aa190d3944e261d5e2c6756abc9afc4`).
+It selects that tag, system-CFLAGS and no-strip patches, and cherry-picks
+`e320c929207aaea0d4c8fb2cd29b16de6cbd2b2c`,
+`032643f99e090e0304ef935c2ee11c109d55c8a1` and
+`6b7ee05def510c333fbb8944ae669b72a48367f3`.
+The cached patches concern mkspecs, CMake, Markdown and Wayland, not the reviewed
+hash/I/O sources. They are not applied to the clean cached checkout.
+The recipe enables linked OpenSSL and interprocedural optimization.
+
+However, `git archive --format=tar v6.12.0` reproduces the cached archive hash
+`f24f106cee5f49a1e0778ec84301467640f6fdbbbcdf61e77623c119ab966208`,
+not recipe source checksum
+`d97ef157dc50bdf0425337e9adede8135ab508a4ab2f1abae7e9cfc42c5f86db`.
+This does not prove a source-code difference (archive construction can matter),
+but this review has no verified explanation or exact package-source match.
+Targeted primary recipe retrieval did not close the existing provenance gap.
+The [Arch OpenSSL 3.6.5-1 recipe](https://gitlab.archlinux.org/archlinux/packaging/packages/openssl/-/raw/3.6.5-1/PKGBUILD)
+was also retrieved: it names the upstream release archive, a CA-directory patch
+and `linux-x86_64` shared configuration. Its release source and patch were not
+independently matched to the installed binary; internal provider/assembly
+attribution remains unresolved. No alternative backend or storage search follows.
+
+The cached Qt source and targeted binary inspection establish the following:
+
+- `qcryptographichash.cpp:544–588` loads the default provider with retained
+  fallbacks, allocates an EVP context, fetches the algorithm in the default
+  library context with property query `-fips`, and initializes it. That query
+  removes a default FIPS restriction; it does not force a particular provider.
+  Legacy-provider loading is for MD4. Binary calls at `0x304457`, `0x304479`,
+  `0x304510` and `0x304538` corroborate provider loading, allocation, fetch and
+  initialization. Provider selection in an actual validation process was not
+  observed.
+- SHA-256's update dispatch reaches `EVP_DigestUpdate` at `0x304807` (the
+  algorithm jump table at `0x5d8be4` routes enum value 4 to `0x304668`). Both
+  the device loop and public byte-view overload call the update routine at
+  `0x304630`. Result extraction calls the finalizer at `0x304e20`; its EVP
+  branch allocates/copies the context and calls `EVP_DigestFinal_ex` at
+  `0x304f9a`, consistent with source lines 1056–1063. Existing Qt initialization
+  and EVP failure handling would also remain the same in the candidate.
+- The exported device overload at `0x304b20` checks readable state and enters
+  the loop at `0x30db80`. At `0x30dbcb` the request is `0x400` bytes; it calls
+  `QIODevice::read` at `0x30dbd6`, updates only for a positive result, and calls
+  the virtual end predicate after a nonpositive result. This corroborates
+  `qcryptographichash.cpp:920–935`, including its lack of a separate negative
+  read or `QFile::error()` rejection.
+- The host reports Intel Core i9-14900HX with `sha_ni` and AVX2. CPU capability
+  and compiled EVP support do not establish an executed SHA-NI/AVX2 routine.
+  No runtime dispatch trace, provider identity or instruction-level speedup is
+  claimed.
+
+The 1 KiB constant controls each Qt read request and each positive digest update,
+not SHA-256's internal block size and not necessarily a kernel read.
+`qiodevice_p.h:33–34,115` defaults buffering to 16 KiB;
+`qiodevice.cpp:1063–1145` consumes buffered data, refills for small requests and
+can read directly into the destination for large requests. `QFile::open()`
+passes `Unbuffered` to the file engine while retaining the caller's QIODevice
+mode (`qfile.cpp:964`); the validator opens `ReadOnly`, without text conversion.
+`QFileDevice::readData` delegates to the engine, records errors and invalidates
+cached size on short reads (`qfiledevice.cpp:479–504`). The native descriptor
+engine can perform multiple `read()` calls to satisfy one request and can return
+bytes already read before a later error (`qfsfileengine.cpp:605–660`). Thus
+neither source nor disassembly justifies counting one syscall per 1 KiB update.
+The 64 KiB candidate would also change buffering/refill boundaries.
+
+The candidate's intended policy is: retain open/readable guards, repeatedly
+request at most 65,536 bytes in one fixed buffer, feed every positive byte count
+to the same Qt hash, stop on a nonpositive read and use `atEnd()` as the completion
+predicate. Keep the existing full lowercase-hex digest comparison. This is a
+review description, not an implementation or a new error policy.
+
+| Case | Current behavior and candidate requirement |
+| --- | --- |
+| Positive partial read | Hash exactly the returned bytes and continue; a short positive result alone is not EOF. |
+| Empty file / ordinary EOF | Attempt the read, then require `atEnd()`; compare the full empty/input digest as appropriate. |
+| Final partial chunk / exact chunk multiple | Include every positive result; perform a subsequent read to terminate. No padding by the caller, no omitted tail. |
+| Zero read | Stop and accept completion only if `atEnd()` is true. No retry or pre-read `atEnd()` shortcut. |
+| Negative read / device error | Current completion is still `atEnd()`, not an unconditional rejection. `QFileDevice::atEnd()` considers buffers, open/flush state, engine support and available bytes; it does not simply test the stored read error. An unconditional `n < 0` or `file.error()` rejection would change acceptance when end is true and the accumulated digest matches. |
+| Digest mismatch | Reject through the existing hash-failure path; no shortened digest, normalization of the manifest value or skipped comparison. |
+| Chunk-dependent faults or mutation | Equal loop predicates do not prove identical underlying read/error sequences. Buffering can expose a fault at different boundaries; acceptance equivalence across such cases remains unqualified. No improved concurrent-mutation protection is claimed. |
+
+The candidate affects only the device-overload expression in
+`src/isolated/runtime.cpp:validate`. Manifest regular-file/mode checks, bounded
+parse and version/record validation; absolute root and normalized `usr/` paths,
+null/duplicate rejection; payload `lstat`, regular-file, exact 0644/0755 and
+declared-size checks; required helper/four plugins; and final exact tree inventory
+and symlink rejection must all retain their ordering and predicates. Full SHA-256
+is still calculated per payload per operation. No new byte-count acceptance rule,
+metadata cache, mapping, parallel hashing, dependency or direct OpenSSL API is
+part of the candidate. Existing validation-to-launch races remain.
+
+Larger chunks plausibly reduce repeated Qt read/update overhead and buffer copies.
+That is a mechanism hypothesis only: the combined read/hash profile cannot
+estimate its savings or demonstrate that the overhead is material. The source
+provenance gap is sufficient to stop qualification; chunk-dependent error
+equivalence is an additional unresolved correctness obligation. No experiment is
+authorized by this result. If reconsidered later, the same single candidate must
+first close provenance and cover empty files, 1 KiB/16 KiB/64 KiB boundaries and
+tails, partial/zero/negative reads with both end states, and device errors, then
+reuse the existing ten valid/corrupted-runtime agreement cases on disposable
+copies. Execution is outside this step.
+
+Verification for this review is source/binary/citation and cross-document review
+plus whitespace checks in Images and the umbrella. No new automated tests,
+native builds, benchmarks, frozen-runtime execution/modification, installation,
+deployment, commits or pin updates were performed.
