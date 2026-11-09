@@ -714,3 +714,280 @@ closed. Only this review documentation and new ignored analysis artifacts were
 written. Syntax, arithmetic/association assertions, source review and whitespace
 checks are the relevant verification; previous native builds and tests were not
 repeated. No commits or publications were created.
+
+## Focused scope-discovery experiment plan (2026-11-09)
+
+Status: design draft, written after committing the broad profile and offline
+review. This plan does not implement instrumentation or authorize a native run.
+The prior verdict remains **no qualified attribution**. The focused question is:
+**how tightly can the existing observations bound the time between launcher
+membership becoming visible in the intended scope and the parent discovering
+it?** Scope directory creation, manager registration, launcher membership,
+verified limits and helper readiness are distinct events. Only membership
+visibility to the existing `/proc/<launcher-pid>/cgroup` query is targeted here.
+
+### 1. Establish feasibility before building
+
+Use the existing discovery reads to bracket visibility; do not add a polling
+thread, D-Bus subscription, kernel tracer, child message or gate handshake.
+This deliberately accepts bounded timing resolution rather than promising an
+exact availability timestamp. Review the host's proc/cgroup read semantics and
+the systemd-run process lifecycle against the exact archived launcher path.
+Establish that a complete read can be treated as a membership observation within
+its start/end bracket, and that the launcher cannot leave and re-enter the
+unique target scope during discovery. Record the source basis and assumptions.
+If either condition cannot be justified, stop at a feasibility report; do not
+build or claim availability bounds. Kernel-event tracing would require a
+separate design addressing privileges, identity matching and observer cost.
+
+The existing `fileBytes()` returns an empty array for failed open or excessive
+size, and `groupOf()` maps nonmatching and unusable input to the same empty
+result. Therefore an empty result is **not** sufficient evidence of absent
+membership. A private overlay must retain read completion/error information and
+classify complete valid nonmatching cgroup data separately from unknown reads.
+Reuse the same open/read and returned bytes; add no extra query, changed retry,
+delay, limit or error behavior to the launcher. Prove this observational
+addition preserves the production decision for each input. Missing, malformed,
+truncated or failed reads invalidate the tight bracket; never silently classify
+them as a negative membership observation.
+
+### 2. Use two variants with common parent boundaries
+
+Archive one revision and freeze tooling, fixture, schedule and policy before
+qualification. Build fresh host-native Release variants and prepare their
+runtime bundles with the existing script. The two variants differ only in
+whether detailed discovery observation is enabled:
+
+| Variant | Records during normal measured calls |
+| --- | --- |
+| Control | Parent P0, P1, S, L, P2 and exit, plus bounded discovery counts/read-validity flags |
+| Observed | The same common records, plus start/end of each existing membership query and each existing discovery wait |
+
+P0/P2 retain the original outer-readiness boundary. S follows the successful
+membership query; L follows actual memory/swap verification. Use one parent
+CLOCK_MONOTONIC clock, a fixed-size in-memory ledger and serialization only after
+operation completion and cleanup. No clock identity syscalls, allocation for
+logging, formatting or diagnostic writes belong in these timed observations.
+Retain the existing production read allocations and logic. Qualification-only
+fault diagnostics must be absent from both normal measured child paths; use
+production stderr handling for normal calls. No cross-process clock alignment
+or helper clock/namespace probes are needed for the parent-only calculation.
+Clock resolution and monotonicity must still be checked outside timed launch.
+
+Control and observed share the same read classification and common timestamps,
+so comparisons reveal incremental query/wait instrumentation cost only. Their
+shared overhead versus uninstrumented production remains unknown. This design
+cannot validate the earlier six-interval attribution or split bubblewrap from
+loader work. Do not compare new ratios with old runs to infer improvement.
+
+### 3. Calculate conservative per-call bounds
+
+Under the feasibility assumptions, let [n0,n1] bracket the last complete valid
+nonmatching read and [p0,p1] bracket the first complete matching read. Retain all
+prior observations as well. Let A be the transition to observable membership.
+Use the conservative bracket **A in [n0,p1]**, not [n1,p0]: the membership
+snapshot can occur inside either read. With S >= p1:
+
+- Launch-to-visible-membership lies in [n0-P0, p1-P0].
+- Visible-membership-to-discovery lies in [S-p1, S-n0].
+- Bracket width is p1-n0; never substitute its midpoint as a measured A.
+
+A first-query success lacks a negative bound: report it as left-censored and
+use only the broad [P0,p1] interval. Any unknown read is reported explicitly and
+prevents a qualified tight-bracket conclusion for that call. Do not discard or
+replace it. All differences, interval closure and shares are computed per call.
+Report lower and upper bounds separately with n, median, nearest-rank p95 and
+maximum, as well as censored/invalid counts. A wide bound is an inconclusive
+result, not evidence for a midpoint or a presumed half-poll delay.
+
+Also report query work, wait durations/counts and remaining elapsed time per
+call. Wait spans overlap startup and must never be called recoverable latency.
+Even a qualified bound on observation lag is not a prediction of savings from
+changing polling: a different policy could change scheduling and startup.
+
+### 4. Freeze a smaller, inspection-only budget
+
+Use the same independently verified 160x80 PNG and source-inspection limits,
+Apply orientation and disabled metadata. Inspection is sufficient for this
+launcher-path question; do not generalize the result to source or cached decode.
+Preserve separate qualification from measurement:
+
+- At most 12 qualification calls: the existing six cases for each variant.
+  Success uses the normal measurement configuration with child diagnostics off.
+  Fault cases may enable bounded qualification-only diagnostics. Preserve the
+  complete helper-entry plus descendant condition before descendant cancellation.
+- After every case passes, three blocks of three excluded warm-up pairs and
+  20 measured pairs, continuously alternating control/observed order. Each
+  block has ten measured pairs of each order. Prewrite every slot.
+- Total maximum: **150 calls** (12 qualification, 120 measured, 18 warm-ups).
+  No automatic retry, recovery attempt, sample replacement or adaptive extension.
+  This is a proposed budget for a separately authorized execution.
+
+Retain the independent 25-second watchdog, five-second emergency-cleanup bound,
+expected statuses, exact inspection facts, launcher reaping and hierarchical
+cleanup proof. Stop on unexpected outcome, lost evidence, invalid capture,
+mutation or surviving scope. Record unknown membership reads without changing
+runtime behavior; stop further measurement if they defeat the required evidence.
+Preserve all attempted samples and all unattempted slots. A qualified result
+requires complete observations; censoring is reported, never hidden.
+
+### 5. Decide qualification and usefulness separately
+
+Before interpreting bounds, require observed/control median and nearest-rank
+p95 ratios <=1.10 in each block and pooled for both P0→P2 and P0→S. The second
+gate prevents larger total-readiness intervals from hiding a discovery-specific
+perturbation. Compare products using unrounded data and positive denominators.
+All safety, completeness and integrity gates must also pass. Failure means
+**no qualified scope-discovery attribution**, with descriptive evidence retained
+and no new run to chase a pass. Passing only bounds incremental observer cost;
+it does not establish zero shared instrumentation bias.
+
+Report paired deltas and both pair orders without using them to override the
+predeclared gates. Once gates pass, describe whether the per-call bounds are
+narrow enough to answer the question; report broad or predominantly censored
+bounds as inconclusive. No favorable numeric result automatically authorizes a
+production optimization. A tighter bound may require a different observation
+mechanism and its own feasibility decision.
+
+### 6. Verify and retain evidence proportionally
+
+Before native work, add focused offline tests for valid nonmatches versus read
+failures, first-read success, malformed/truncated input, brackets spanning read
+execution, monotonic ordering, bounds/closure, warm-up exclusion, fixed counts,
+missing records, censoring and overhead-gated conclusions. Review exact overlays
+against the archived source, proving unchanged validation, memory/swap checks,
+sandbox policy, G/R/request/reply/A ordering, deadlines and cleanup. No new
+library, public API, installation, persistent helper or dependency is needed.
+
+Retain immutable tooling/archive hashes, fixture identities, source and runtime
+inventories, native build provenance, schedules, raw/parsed records, per-call
+bounds, cleanup evidence and integrity checks in a new ignored directory.
+Keep both historical attempts and the offline review unchanged. Update this SDD
+and linked runtime-generation/umbrella notes with the result, including a
+feasibility refusal or inconclusive outcome. Reuse valid focused checks and
+builds; do not run unrelated preview, container or installed-package suites.
+Generation reuse and all previously closed optimization directions remain closed.
+
+## Focused scope-discovery execution outcome (2026-11-09)
+
+**No qualified scope-discovery attribution.** The separately authorized focused
+experiment completed all **150 calls**: 12 qualification, 18 excluded warm-ups
+and 120 measured inspection calls (60 per variant). Two block-level
+outer-readiness overhead gates failed. No retry, recovery, replacement sample,
+expanded budget or second execution occurred. The earlier broad-profile verdict
+remains **no qualified attribution**; no production optimization is selected.
+
+Evidence: [`build/scope-discovery-9zyg2nw0`](../../../build/scope-discovery-9zyg2nw0/report.md),
+with [machine-readable results](../../../build/scope-discovery-9zyg2nw0/summary.json)
+and [post-run audit](../../../build/scope-discovery-9zyg2nw0/post-run-audit.json).
+The [private sibling tooling](../../../experiments/scope-discovery-profile/README.md)
+preserves the broad profiler. Production sources, APIs, dependencies, installation
+and historical evidence were not changed.
+
+### Feasibility and implementation
+
+The retained [feasibility review](../../../build/scope-discovery-9zyg2nw0/feasibility/feasibility.md)
+uses Linux **7.2.14-arch1-1** and systemd **262.1-1-arch**. Both Arch recipes match
+the cached packages' recorded recipe hashes. Installed launcher/kernel-image
+payloads match the cached packages; kernel sources match the recipe-checksummed
+archive, and the package patches were checked. The versioned systemd archive,
+tag/commit provenance, package patch and relevant manager code are retained.
+Upstream master/main were starting points, not host-source substitutes.
+
+The proc single-record read renders membership under `css_set_lock` inside the
+read bracket. The selected systemd scope path submits its own PID and execs the
+gate in that process. The existing gate prevents sandbox execution until the
+parent observes membership and verifies actual memory/swap limits. Feasibility
+assumes **no external actor migrates the launcher during discovery**, and no
+external mutation of the target path or relevant namespaces. Scope creation,
+manager registration, membership visibility and limit verification are distinct.
+This source review establishes conditional feasibility, not measured attribution.
+
+Both host-native Release variants came from one archived Images revision,
+`7a312293cc629a0c0c9008919725166a7fe59614`. Parent fixed storage retains common
+P0/P1/S/L/P2/exit boundaries, counts and invalidity; observed alone adds ordered
+query/classification/wait records. The original read, returned bytes, launcher
+decision, polling interval, validation, sandbox policy, protocol and cleanup are
+preserved. Unknown reads would finish cleanup and stop further dispatch.
+
+Normal success and measurement disable child diagnostics, child clock probes,
+fault arguments and stderr draining; production null-stderr handling is retained.
+Qualification faults alone enable bounded diagnostics. Pre-dispatch overlay review
+found that the helper target also compiles runtime.cpp; its unused parent observer
+was fixed to the same setting in both variants, then affected targets and bundles
+were refreshed. The final helper binaries are byte-identical. Preparation manifests
+from before that correction remain in `pre-review/`; no experiment calls preceded
+it. Final tooling, overlays, source/runtime inventories, policy and schedules were
+frozen before dispatch.
+
+### Acceptance gates
+
+Ratios below are observed/control; display rounding is informational. Gates used
+unrounded values with positive denominators and exact 11/10 product comparisons.
+Every block and pooled median **and** nearest-rank p95 had to pass for both metrics.
+
+| Group | Outer median | Outer p95 | Discovery median | Discovery p95 | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Block 0 | **1.113138** | 1.008549 | 0.989989 | 0.998512 | Fail |
+| Block 1 | 1.050997 | **1.183387** | 0.999736 | 1.024694 | Fail |
+| Block 2 | 1.011205 | 0.902765 | 0.996790 | 0.985000 | Pass |
+| Pooled | 1.050611 | 1.023535 | 0.997011 | 1.009179 | Pass |
+
+Passing pooled and discovery-specific gates does not override either block failure.
+All 12 qualification cases passed, including both TERM-resistant descendant cases.
+All 150 calls retained verified hierarchical cleanup and launcher reaping; maximum
+reported cleanup duration was 1,023 ms. There were zero unknown reads, capture
+failures, unattempted slots or final integrity errors. All 140 normal calls (138
+scheduled plus two qualification successes) retained no child diagnostic stream.
+
+### Descriptive intervals and limitations
+
+These figures are **descriptive only**, not qualified membership-to-discovery
+attribution. Each observed call uses `[n0,p1]`, never `[n1,p0]` or a midpoint.
+First-read success would use `[P0,p1]` and remain included as left-censored. In this
+run all 60 measured observed calls were uncensored (20 in each block); the censored
+groups have n=0 and no statistics. Warm-ups are retained and excluded from summaries.
+
+| Group | Observed n | Uncertainty median (ms) | p95 (ms) | Maximum (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Block 0 | 20 | 5.146431 | 5.324880 | 5.440419 |
+| Block 1 | 20 | 5.147334 | 5.252179 | 5.282944 |
+| Block 2 | 20 | 5.147577 | 5.281130 | 5.616598 |
+| Pooled | 60 | 5.146505 | 5.291018 | 5.616598 |
+
+Pooled endpoint statistics below summarize per-call endpoints separately; they
+are not the bounds of a single median call or an estimated availability timestamp.
+
+| Quantity | Median (ms) | p95 (ms) | Maximum (ms) |
+| --- | ---: | ---: | ---: |
+| Launch-to-membership lower | 10.573506 | 16.100524 | 16.201020 |
+| Launch-to-membership upper | 15.687224 | 21.222052 | 21.442075 |
+| Membership-to-discovery lower | 0.000018 | 0.000108 | 0.000122 |
+| Membership-to-discovery upper | 5.146566 | 5.291035 | 5.616704 |
+| Query work | 0.147233 | 0.259493 | 0.278818 |
+| Existing discovery waits | 15.182784 | 20.544629 | 20.823455 |
+| Residual discovery elapsed | 0.401193 | 0.646781 | 0.721395 |
+
+Measured observed query counts had median 4, p95 5 and maximum 5; wait counts were
+3, 4 and 4. Every per-call work/wait/residual closure was exactly zero. Full counts,
+median, p95 and maximum for each block and pooled, censoring groups, raw records,
+per-call bounds, paired deltas and pair-order summaries remain in the evidence.
+Pair comparisons are descriptive and do not override gates. Shared instrumentation
+bias versus production remains unmeasured. Wait spans are not removable latency,
+and these inspection results neither generalize to decoding nor estimate savings.
+No post-hoc usefulness threshold is introduced. Generation reuse and all previously
+closed optimization directions remain closed.
+
+### Verification
+
+The existing 17 focused tests passed. Thirteen new focused tests passed, including
+compiled C++ checks for read classification and unchanged launcher return values,
+first-read censoring, unknown/missing/unordered records, conservative arithmetic,
+closure, scheduling/order, warm-up exclusion, threshold equality/failure, partial
+reporting, qualification gates, exact/stale tooling inventories, overlay anchors,
+normal telemetry isolation and descendant cancellation. Python syntax, changed-C++
+formatting and whitespace checks passed. Both native Release builds and runtime
+preparations passed, and overlays were reviewed before execution. The post-run audit
+reproduced all summary rows from retained samples and rechecked frozen integrity.
+No unrelated preview, container or installed-package suite was run: this changes
+only private experimental tooling and documentation, with no installed contract.

@@ -1689,3 +1689,32 @@ reproducible offline outputs are in Images `build/launcher-readiness-review-2026
 Verification covered retained-data consistency, reproduced gate ratios, input
 hashes, script syntax, source inspection and whitespace. Closed optimization
 directions and the generation-reuse no-go remain unchanged.
+
+### Focused experiment design draft (2026-11-09)
+
+The [scope-discovery plan](../launcher-readiness-profile/DESIGN.md#focused-scope-discovery-experiment-plan-2026-11-09)
+proposes parent-only bounds from existing cgroup reads, after validating their
+observation semantics and launcher membership lifecycle. Both variants retain
+common parent boundaries; only one adds detailed query/wait timestamps. Failed
+reads cannot stand for absent membership. The proposed inspection-only cap is
+150 calls, with qualification and both discovery/outer overhead gates. This is
+planning only: no implementation or execution is authorized, no optimization is
+selected, and the previous no-qualified-attribution verdict remains unchanged.
+
+### Focused scope-discovery execution outcome (2026-11-09)
+
+**No qualified scope-discovery attribution.** The subsequently authorized
+[parent-only experiment](../launcher-readiness-profile/DESIGN.md#focused-scope-discovery-execution-outcome-2026-11-09)
+completed 150 calls: 12 qualification, 18 excluded warm-ups and 120 measured
+inspections. Host-matched source review passed conditionally on no external
+launcher migration. Qualification, evidence completeness, cleanup and integrity
+passed, but outer-readiness ratios failed in block 0 (median 1.113138) and block 1
+(p95 1.183387), exceeding 1.10. No retry or recovery followed. The descriptive
+uncertainty width had pooled median 5.146505 ms, p95 5.291018 ms and maximum
+5.616598 ms; all 60 measured observed calls were uncensored. This is not qualified
+attribution, an availability timestamp or a savings estimate. Evidence is retained
+in Images `build/scope-discovery-9zyg2nw0`. Verification: existing 17 and new 13
+focused tests, syntax/formatting/whitespace checks, two native Release variants,
+prepared bundles, overlay review and reproduced post-run accounting/integrity.
+Production behavior and historical evidence are unchanged; no decoding inference
+or previously closed optimization direction is reopened.
