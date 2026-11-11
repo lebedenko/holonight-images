@@ -80,8 +80,43 @@ int main(int argc, char** argv) {
     return 92;
   }
   qint64 length = 0;
-  const auto request = parseRequest(parseControl(read(input, size)), length);
-  const auto mode = readMode(input, length);
+  const auto record = parseControl(read(input, size));
+  auto request = parseRequest(record, length);
+  auto mode = readMode(input, length);
+  if (mode.startsWith("txn-")) {
+    integer(record, "transactionVersion", 1, 1);
+    integer(record, "sequence", 0, 0);
+    Reply reply;
+    reply.inspection.outcome = Outcome::Unsupported;
+    QByteArray pixels;
+    auto response = replyControl(reply, Operation::Inspect, pixels);
+    response["transactionVersion"] = 1;
+    response["sequence"] = 0;
+    out.write(frame(response));
+    out.flush();
+    const auto nextSize = qFromBigEndian<quint32>(read(input, 4).constData());
+    if (nextSize == 0 || nextSize > controlCeiling) {
+      return 92;
+    }
+    request = parseRequest(parseControl(read(input, nextSize)), length);
+    read(input, length);
+    mode = mode.mid(4);
+    if (mode == "trailing" || mode == "identity") {
+      Reply decoded;
+      decoded.decoded.outcome = Outcome::Unsupported;
+      decoded.decoded.inspection.outcome = Outcome::Unsupported;
+      auto control = replyControl(decoded, Operation::Decode, pixels);
+      control["transactionVersion"] = 1;
+      control["sequence"] = mode == "identity" ? 7 : 1;
+      out.write(frame(control));
+      if (mode == "trailing") {
+        out.write("trailing");
+      }
+      out.flush();
+      read(input, 1);
+      return 0;
+    }
+  }
   if (mode.startsWith("payload:")) {
     return completePayload(mode, request.operation, input, out);
   }

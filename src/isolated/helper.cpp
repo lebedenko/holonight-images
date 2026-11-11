@@ -26,6 +26,97 @@ QByteArray read(QFile& file, qint64 count) {
   }
   return bytes;
 }
+bool transactionCommand(const QJsonObject& record, const Request& request, qint64 count, int sequence,
+                        bool sourceDecoded, int& candidates, qint64 retainedSize) {
+  integer(record, "transactionVersion", 1, 1);
+  integer(record, "sequence", sequence, sequence);
+  if (!record["retainedSource"].isBool()) {
+    throw ProtocolError("invalid retained source flag");
+  }
+  const bool retained = record["retainedSource"].toBool();
+  if (sequence == 0) {
+    if (request.operation != Operation::Inspect || retained) {
+      throw ProtocolError("transaction must start with source inspection");
+    }
+  } else if (request.operation != Operation::Decode || sourceDecoded || (!retained && ++candidates > 4)) {
+    throw ProtocolError("invalid transaction command sequence");
+  }
+  if (retained && (count != 0 || retainedSize > request.options.limits.inputBytes)) {
+    throw ProtocolError("unexpected retained source payload");
+  }
+  return retained;
+}
+Reply execute(const Request& request, QByteArray& bytes, bool cachedPng) {
+  QBuffer device(&bytes);
+  device.open(QIODevice::ReadOnly);
+  const std::atomic_bool cancelled{false};
+  Reply reply;
+  // Sniff and reject formats outside this milestone before invoking the provider.
+  const auto format = canonicalFormat(QImageReader::imageFormat(&device));
+  const bool qualified = QList<QByteArray>{"png", "jpeg", "bmp", "tiff", "webp", "gif"}.contains(format);
+  if (!qualified || (cachedPng && format != "png")) {
+    reply.inspection.outcome = Outcome::Unsupported;
+    reply.metadata.outcome = Outcome::Unsupported;
+    reply.decoded.outcome = Outcome::Unsupported;
+    reply.decoded.inspection.outcome = Outcome::Unsupported;
+  } else if (request.operation == Operation::Inspect) {
+    reply.inspection = HolonightImages::inspect(device, request.options.limits, cancelled, request.options.orientation,
+                                                request.metadata);
+  } else if (request.operation == Operation::Metadata) {
+    reply.metadata = HolonightImages::readMetadata(device, request.options.limits, cancelled);
+  } else {
+    reply.decoded = HolonightImages::decode(device, request.options, cancelled);
+  }
+  return reply;
+}
+int serve(QFile& input, QFile& output) {
+  QByteArray retainedBytes;
+  bool transaction = false;
+  bool sourceDecoded = false;
+  int sequence = 0;
+  int candidates = 0;
+  QByteArray prefix;
+  while (true) {
+    const auto size = qFromBigEndian<quint32>((prefix + read(input, 4 - prefix.size())).constData());
+    if ((size == 0U) || size > controlCeiling) {
+      return 72;
+    }
+    qint64 count = 0;
+    const auto record = parseControl(read(input, size));
+    const auto request = parseRequest(record, count);
+    if (sequence == 0) {
+      transaction = record.contains("transactionVersion");
+    }
+    bool retained = false;
+    if (transaction) {
+      retained = transactionCommand(record, request, count, sequence, sourceDecoded, candidates, retainedBytes.size());
+      sourceDecoded = retained;
+    }
+    auto bytes = retained ? retainedBytes : read(input, count);
+    if (transaction && sequence == 0) {
+      retainedBytes = bytes;
+    }
+    auto reply = execute(request, bytes, transaction && sequence > 0 && !retained);
+    QByteArray pixels;
+    auto control = replyControl(reply, request.operation, pixels);
+    if (transaction) {
+      control["transactionVersion"] = 1;
+      control["sequence"] = sequence;
+    }
+    const auto header = frame(control);
+    if (output.write(header) != header.size() || output.write(pixels) != pixels.size() || !output.flush()) {
+      return 73;
+    }
+    prefix = read(input, 1);
+    if (prefix == "A") {
+      return 0;
+    }
+    if (!transaction) {
+      return 78;
+    }
+    ++sequence;
+  }
+}
 }  // namespace
 int main(int argc, char** argv) {
   const std::span<char*> arguments(argv, static_cast<size_t>(argc) + 1);
@@ -60,43 +151,8 @@ int main(int argc, char** argv) {
     if (output.write("R", 1) != 1 || !output.flush()) {
       return 76;
     }
-    const auto size = qFromBigEndian<quint32>(read(input, 4).constData());
-    if ((size == 0U) || size > controlCeiling) {
-      return 72;
-    }
-    qint64 count = 0;
-    const auto request = parseRequest(parseControl(read(input, size)), count);
-    auto bytes = read(input, count);
-    QBuffer device(&bytes);
-    device.open(QIODevice::ReadOnly);
-    const std::atomic_bool cancelled{false};
-    Reply reply;
-    // Sniff and reject formats outside this milestone before invoking the provider.
-    const auto format = canonicalFormat(QImageReader::imageFormat(&device));
-    const bool qualified = QList<QByteArray>{"png", "jpeg", "bmp", "tiff", "webp", "gif"}.contains(format);
-    if (!qualified) {
-      reply.inspection.outcome = Outcome::Unsupported;
-      reply.metadata.outcome = Outcome::Unsupported;
-      reply.decoded.outcome = Outcome::Unsupported;
-      reply.decoded.inspection.outcome = Outcome::Unsupported;
-    } else if (request.operation == Operation::Inspect) {
-      reply.inspection = HolonightImages::inspect(device, request.options.limits, cancelled,
-                                                  request.options.orientation, request.metadata);
-    } else if (request.operation == Operation::Metadata) {
-      reply.metadata = HolonightImages::readMetadata(device, request.options.limits, cancelled);
-    } else {
-      reply.decoded = HolonightImages::decode(device, request.options, cancelled);
-    }
-    QByteArray pixels;
-    auto control = replyControl(reply, request.operation, pixels);
-    auto header = frame(control);
-    if (output.write(header) != header.size() || output.write(pixels) != pixels.size() || !output.flush()) {
-      return 73;
-    }
-    if (read(input, 1) != "A") {
-      return 78;
-    }
-    return 0;
+    return serve(input, output);
+
   } catch (const std::exception&) {
     return 74;
   }

@@ -11,6 +11,8 @@ struct TransportResult {
   qint64 startup = 0;
   qint64 operation = 0;
 };
+using TransactionExchange = std::function<Reply(const Request&, const QByteArray&, bool)>;
+using TransactionCoordinator = std::function<DecodeResult(const Inspection&, const TransactionExchange&)>;
 TransportResult dispatch(const QString& runtime, const Request& request, const QByteArray& input,
-                         const std::atomic_bool& cancelled);
+                         const std::atomic_bool& cancelled, const TransactionCoordinator& coordinate = {});
 }  // namespace HolonightImages::Isolation

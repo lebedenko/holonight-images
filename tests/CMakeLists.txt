@@ -13,6 +13,11 @@ target_link_libraries(svg-without-image-plugin-test PRIVATE HolonightImages::Ima
 add_test(NAME svg-without-image-plugin COMMAND svg-without-image-plugin-test)
 
 if(HOLONIGHT_IMAGES_ISOLATED)
+  add_executable(isolated-transaction-test isolated_transaction_test.cpp)
+  target_link_libraries(isolated-transaction-test PRIVATE HolonightImages::Isolated GTest::gtest)
+  target_compile_definitions(isolated-transaction-test PRIVATE HELPER_PATH="$<TARGET_FILE:holonight-images-helper>")
+  add_dependencies(isolated-transaction-test holonight-images-helper)
+  add_test(NAME isolated-transaction COMMAND isolated-transaction-test --gtest_filter=TransactionHelper.*)
   add_executable(isolated-cleanup-test isolated_cleanup_test.cpp)
   target_link_libraries(isolated-cleanup-test PRIVATE HolonightImages::Isolated GTest::gtest_main)
   add_test(NAME isolated-cleanup COMMAND isolated-cleanup-test)
@@ -36,6 +41,9 @@ if(HOLONIGHT_IMAGES_ISOLATED)
   target_link_libraries(isolated-runtime-test PRIVATE HolonightImages::Isolated)
   set(HOLONIGHT_IMAGES_FAULT_RUNTIME "" CACHE PATH "Explicitly prepared test-only fault runtime")
   if(HOLONIGHT_IMAGES_RUNTIME_TESTING AND HOLONIGHT_IMAGES_FAULT_RUNTIME AND HOLONIGHT_IMAGES_RUNTIME_BUNDLE)
+    add_test(NAME isolated-source-transaction COMMAND isolated-transaction-test --gtest_filter=SourceTransaction.* --gtest_break_on_failure)
+    set_tests_properties(isolated-source-transaction PROPERTIES ENVIRONMENT
+      "HN_TRANSACTION_RUNTIME=${HOLONIGHT_IMAGES_RUNTIME_BUNDLE};HN_TRANSACTION_FAULT_RUNTIME=${HOLONIGHT_IMAGES_FAULT_RUNTIME}")
     add_test(NAME isolated-namespace-denied COMMAND /usr/bin/bwrap --unshare-user --disable-userns
       --ro-bind / / --proc /proc --dev-bind /dev /dev --setenv HN_TEST_NAMESPACE_DENIED 1
       $<TARGET_FILE:isolated-runtime-test> ${HOLONIGHT_IMAGES_RUNTIME_BUNDLE} ${HOLONIGHT_IMAGES_FAULT_RUNTIME})

@@ -68,6 +68,13 @@ int main(int argc, char** argv) {
       require(buffer.isOpen(), "caller device closed");
       require(isolated.result->outcome == direct.outcome, "outcome mismatch");
       compare(isolated.result->image, direct.image);
+      const auto transaction = client.sourceTransaction(
+          buffer, options.limits, running,
+          [&](const Inspection&, SourceTransaction& source) { return source.decodeSource(options); });
+      require(transaction.runtime == RuntimeStatus::Success && transaction.result.has_value(),
+              "installed source transaction failed");
+      require(transaction.result->outcome == direct.outcome, "transaction outcome mismatch");
+      compare(transaction.result->image, direct.image);
       total += isolated.elapsedMilliseconds;
       startup += isolated.startupMilliseconds;
       operation += isolated.operationMilliseconds;

@@ -103,7 +103,7 @@ class NativeCleanup final : public CleanupOperations {
 // Keep the ordered security/lifecycle checks together for auditing.
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
 TransportResult dispatch(const QString& runtime, const Request& request, const QByteArray& input,
-                         const std::atomic_bool& cancelled) {
+                         const std::atomic_bool& cancelled, const TransactionCoordinator& coordinate) {
   TransportResult result;
   QElapsedTimer elapsed;
   elapsed.start();
@@ -245,7 +245,6 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
       throw Failure{.status = RuntimeStatus::Unavailable, .message = "sandbox helper failed before readiness"};
     }
     result.startup = elapsed.elapsed();
-    const auto header = frame(requestControl(request, input.size()));
     auto send = [&](const QByteArray& segment) {
       qint64 sent = 0;
       while (sent < segment.size() || (process.bytesToWrite() != 0)) {
@@ -264,16 +263,60 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
         }
       }
     };
-    send(header);
-    send(input);  // Borrow the capture, which remains alive until dispatch returns.
-    const auto length = qFromBigEndian<quint32>(receive(4).constData());
-    if ((length == 0U) || length > controlCeiling) {
-      throw ProtocolError("response control limit");
+    int sequence = 0;
+    int candidates = 0;
+    bool sourceDecoded = false;
+    std::exception_ptr transactionFailure;
+    auto exchange = [&](const Request& command, const QByteArray& data, bool retained) {
+      try {
+        if (transactionFailure) {
+          std::rethrow_exception(transactionFailure);
+        }
+        check();
+        if (sequence > 0 &&
+            (command.operation != Operation::Decode || sourceDecoded || (!retained && ++candidates > 4))) {
+          throw ProtocolError("invalid transaction command sequence");
+        }
+        if (retained) {
+          sourceDecoded = true;
+        }
+        auto record = requestControl(command, data.size());
+        if (coordinate) {
+          record["transactionVersion"] = 1;
+          record["sequence"] = sequence;
+          record["retainedSource"] = retained;
+        }
+        send(frame(record));
+        send(data);
+        const auto length = qFromBigEndian<quint32>(receive(4).constData());
+        if ((length == 0U) || length > controlCeiling) {
+          throw ProtocolError("response control limit");
+        }
+        const auto control = parseControl(receive(length));
+        if (coordinate) {
+          integer(control, "transactionVersion", 1, 1);
+          integer(control, "sequence", sequence, sequence);
+        }
+        const auto bytes = integer(control, "bytes", 0, qMin(byteCeiling, command.options.limits.decodedBytes));
+        auto reply = parseReply(control, receive(bytes), command);
+        check();
+        ++sequence;
+        return reply;
+      } catch (...) {
+        transactionFailure = std::current_exception();
+        throw;
+      }
+    };
+    auto reply = exchange(request, input, false);
+    if (coordinate) {
+      auto selected = coordinate(reply.inspection, exchange);
+      if (transactionFailure) {
+        std::rethrow_exception(transactionFailure);
+      }
+      check();
+      selected.inspection = reply.inspection;
+      reply.decoded = std::move(selected);
     }
-    const auto control = parseControl(receive(length));
-    const auto bytes = integer(control, "bytes", 0, qMin(byteCeiling, request.options.limits.decodedBytes));
-    const auto pixels = receive(bytes);
-    auto reply = parseReply(control, pixels, request);
     check();  // Sample the final peak while the helper is still waiting for acknowledgement.
     result.operation = elapsed.elapsed() - result.startup;
     if (process.write("A", 1) != 1) {
@@ -299,6 +342,9 @@ TransportResult dispatch(const QString& runtime, const Request& request, const Q
   } catch (const std::exception& e) {
     result.status = RuntimeStatus::ProtocolFailure;
     result.diagnostic = QString::fromUtf8(e.what());
+  } catch (...) {
+    result.status = RuntimeStatus::ProtocolFailure;
+    result.diagnostic = "non-standard transaction exception";
   }
   const auto original = result.status;
   const auto message = result.diagnostic;

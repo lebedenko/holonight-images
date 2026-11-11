@@ -9,7 +9,8 @@ namespace HolonightImages {
 namespace {
 template <typename T, typename Select>
 IsolatedResult<T> run(const QString& runtime, QIODevice& source, const Isolation::Request& request,
-                      const std::atomic_bool& cancelled, Select select) {
+                      const std::atomic_bool& cancelled, Select select,
+                      const Isolation::TransactionCoordinator& coordinate = {}) {
   QElapsedTimer clock;
   clock.start();
   IsolatedResult<T> result;
@@ -50,7 +51,7 @@ IsolatedResult<T> run(const QString& runtime, QIODevice& source, const Isolation
   if (wireRequest.options.bound.isEmpty()) {
     wireRequest.options.bound = {};
   }
-  auto transport = Isolation::dispatch(runtime, wireRequest, captured.bytes, cancelled);
+  auto transport = Isolation::dispatch(runtime, wireRequest, captured.bytes, cancelled, coordinate);
   result.runtime = transport.status;
   result.diagnostic = transport.diagnostic;
   result.elapsedMilliseconds = clock.elapsed();
@@ -85,5 +86,55 @@ IsolatedResult<DecodeResult> IsolatedClient::decode(QIODevice& source, const Dec
   return run<DecodeResult>(runtimeDirectory_, source,
                            {.operation = Isolation::Operation::Decode, .options = options, .metadata = true}, cancelled,
                            [](Isolation::Reply reply) { return std::move(reply.decoded); });
+}
+DecodeResult SourceTransaction::decodeCachedPng(QIODevice& candidate, const DecodeOptions& options) {
+  return exchange_(&candidate, options);
+}
+DecodeResult SourceTransaction::decodeSource(const DecodeOptions& options) { return exchange_(nullptr, options); }
+IsolatedResult<DecodeResult> IsolatedClient::sourceTransaction(QIODevice& source, const Limits& limits,
+                                                               const std::atomic_bool& cancelled,
+                                                               const SourceCoordinator& coordinate) const {
+  return run<DecodeResult>(
+      runtimeDirectory_, source,
+      {.operation = Isolation::Operation::Inspect, .options = {.limits = limits, .bound = {}}, .metadata = true},
+      cancelled, [](Isolation::Reply reply) { return std::move(reply.decoded); },
+      [&](const Inspection& inspection, const Isolation::TransactionExchange& exchange) {
+        std::exception_ptr failure;
+        SourceTransaction transaction([&](QIODevice* candidate, const DecodeOptions& options) {
+          try {
+            if (failure) {
+              std::rethrow_exception(failure);
+            }
+            const Isolation::Request request{
+                .operation = Isolation::Operation::Decode, .options = options, .metadata = true};
+            // Round-trip controls before sending to validate caller-supplied limits.
+            qint64 count = 0;
+            Isolation::parseRequest(Isolation::requestControl(request, 0), count);
+            QByteArray bytes;
+            if (candidate) {
+              auto captured = Isolation::capture(*candidate, options.limits.inputBytes, cancelled);
+              if (captured.outcome != Isolation::CaptureOutcome::Success) {
+                if (captured.outcome == Isolation::CaptureOutcome::Cancelled) {
+                  throw Isolation::ProtocolError("cancelled during candidate capture");
+                }
+                DecodeResult failed;
+                failed.outcome = captured.outcome == Isolation::CaptureOutcome::IoFailure ? Outcome::IoFailure
+                                                                                          : Outcome::ResourceLimit;
+                return failed;
+              }
+              bytes = std::move(captured.bytes);
+            }
+            return exchange(request, bytes, candidate == nullptr).decoded;
+          } catch (...) {
+            failure = std::current_exception();
+            throw;
+          }
+        });
+        auto selected = coordinate(inspection, transaction);
+        if (failure) {
+          std::rethrow_exception(failure);
+        }
+        return selected;
+      });
 }
 }  // namespace HolonightImages

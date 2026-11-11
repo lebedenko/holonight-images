@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include <functional>
 #include <holonight_images/image.h>
 
 namespace HolonightImages {
@@ -20,6 +21,25 @@ struct IsolatedResult {
   qint64 operationMilliseconds = 0;
 };
 // NOLINTEND(readability-identifier-naming)
+// Available only during the coordination callback. Results are provisional: do
+// not publish pixels or commit caches until sourceTransaction returns Success.
+class SourceTransaction {
+ public:
+  ~SourceTransaction() = default;
+  SourceTransaction(SourceTransaction&&) = delete;
+  SourceTransaction& operator=(SourceTransaction&&) = delete;
+  SourceTransaction(const SourceTransaction&) = delete;
+  SourceTransaction& operator=(const SourceTransaction&) = delete;
+  DecodeResult decodeCachedPng(QIODevice& candidate, const DecodeOptions& options);
+  DecodeResult decodeSource(const DecodeOptions& options);
+
+ private:
+  friend class IsolatedClient;
+  using Exchange = std::function<DecodeResult(QIODevice*, const DecodeOptions&)>;
+  explicit SourceTransaction(Exchange exchange) : exchange_(std::move(exchange)) {}
+  Exchange exchange_;
+};
+using SourceCoordinator = std::function<DecodeResult(const Inspection&, SourceTransaction&)>;
 // Linux, caller-owned synchronous client. No source paths, scheduling or caches.
 // Each operation creates a fresh helper. Exclusive access to source is required.
 // Capture starts at zero, preserves ownership/open state, ignores size(), and
@@ -44,6 +64,13 @@ class IsolatedClient {
                                               const std::atomic_bool& cancelled) const;
   IsolatedResult<DecodeResult> decode(QIODevice& source, const DecodeOptions& options,
                                       const std::atomic_bool& cancelled) const;
+
+  // One inspection, at most four cached PNG attempts, then at most one source
+  // decode. Callback exceptions terminate the transaction. No helper survives
+  // the call; only the selected result after verified cleanup is returned.
+  IsolatedResult<DecodeResult> sourceTransaction(QIODevice& source, const Limits& limits,
+                                                 const std::atomic_bool& cancelled,
+                                                 const SourceCoordinator& coordinate) const;
 
  private:
   QString runtimeDirectory_;
