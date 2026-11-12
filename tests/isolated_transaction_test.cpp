@@ -77,6 +77,89 @@ const Request inspectRequest{
     .operation = Operation::Inspect, .options = {.limits = limits, .bound = {}}, .metadata = true};
 const Request decodeRequest{
     .operation = Operation::Decode, .options = {.limits = limits, .bound = {30, 20}}, .metadata = true};
+class SessionHelper : public TransactionHelper {
+ protected:
+  int transaction_id = 1;
+  void SetUp() override {
+    process.start(QString::fromLocal8Bit(HELPER_PATH), {"--session"});
+    ASSERT_TRUE(process.waitForStarted());
+    ASSERT_EQ(receive(1), "R");
+    const auto count = qFromBigEndian<quint32>(receive(4).constData());
+    const auto ready = parseControl(receive(count));
+    EXPECT_EQ(ready["command"], "ready");
+    integer(ready, "sessionVersion", 1, 1);
+  }
+  void send(int sequence, bool retained, const Request& request, const QByteArray& bytes) {
+    auto record = requestControl(request, bytes.size());
+    record["transactionVersion"] = 1;
+    record["sequence"] = sequence;
+    record["retainedSource"] = retained;
+    record["sessionVersion"] = 1;
+    record["transactionId"] = transaction_id;
+    process.write(frame(record) + bytes);
+    process.waitForBytesWritten();
+  }
+  Reply reply(int sequence, const Request& request) {
+    const auto count = qFromBigEndian<quint32>(receive(4).constData());
+    const auto record = parseControl(receive(count));
+    integer(record, "sessionVersion", 1, 1);
+    integer(record, "transactionId", transaction_id, transaction_id);
+    integer(record, "sequence", sequence, sequence);
+    return parseReply(record, receive(integer(record, "bytes", 0, limits.decodedBytes)), request);
+  }
+  void complete(int sequence) {
+    process.write(frame(QJsonObject{
+        {"sessionVersion", 1}, {"transactionId", transaction_id}, {"sequence", sequence}, {"command", "complete"}}));
+    process.waitForBytesWritten();
+    const auto count = qFromBigEndian<quint32>(receive(4).constData());
+    const auto record = parseControl(receive(count));
+    integer(record, "transactionId", transaction_id, transaction_id);
+    integer(record, "sequence", sequence, sequence);
+    EXPECT_EQ(record["command"], "completed");
+    EXPECT_TRUE(process.readAllStandardOutput().isEmpty());
+    ++transaction_id;
+  }
+};
+TEST_F(SessionHelper, RepeatedTransactionsResetSourcesAndCandidateLimits) {
+  for (int number = 0; number < 40; ++number) {
+    const auto color = number % 2 ? QColor(Qt::blue) : QColor(Qt::red);
+    send(0, false, inspectRequest, png(color));
+    EXPECT_EQ(reply(0, inspectRequest).inspection.orientedSize, QSize(30, 20));
+    for (int sequence = 1; sequence <= 4; ++sequence) {
+      send(sequence, false, decodeRequest, "invalid PNG");
+      EXPECT_EQ(reply(sequence, decodeRequest).decoded.outcome, Outcome::Unsupported);
+    }
+    send(5, true, decodeRequest, {});
+    EXPECT_EQ(reply(5, decodeRequest).decoded.image.pixelColor(0, 0), color);
+    complete(6);
+    EXPECT_NE(process.state(), QProcess::NotRunning);
+  }
+}
+TEST_F(SessionHelper, RejectsTransactionIdentityReplay) {
+  send(0, false, inspectRequest, png(Qt::red));
+  reply(0, inspectRequest);
+  complete(1);
+  --transaction_id;
+  send(0, false, inspectRequest, png(Qt::blue));
+  ASSERT_TRUE(process.waitForFinished());
+  EXPECT_NE(process.exitCode(), 0);
+}
+TEST_F(SessionHelper, RejectsCompletionSequenceMismatch) {
+  send(0, false, inspectRequest, png(Qt::red));
+  reply(0, inspectRequest);
+  process.write(frame(
+      QJsonObject{{"sessionVersion", 1}, {"transactionId", transaction_id}, {"sequence", 0}, {"command", "complete"}}));
+  ASSERT_TRUE(process.waitForFinished());
+  EXPECT_NE(process.exitCode(), 0);
+}
+TEST_F(SessionHelper, RejectsLegacyAcknowledgementInSession) {
+  send(0, false, inspectRequest, png(Qt::red));
+  reply(0, inspectRequest);
+  process.write("A");
+  process.closeWriteChannel();
+  ASSERT_TRUE(process.waitForFinished());
+  EXPECT_NE(process.exitCode(), 0);
+}
 TEST_F(TransactionHelper, RetainsSourceAcrossRejectedCandidates) {
   send(0, false, inspectRequest, png(Qt::red));
   EXPECT_EQ(reply(0, inspectRequest).inspection.orientedSize, QSize(30, 20));

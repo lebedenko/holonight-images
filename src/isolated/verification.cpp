@@ -15,6 +15,8 @@
 
 namespace HolonightImages::Isolation {
 namespace {
+constexpr qint64 runtimeByteCeiling = 128LL * 1024 * 1024;
+constexpr qsizetype runtimeFileCeiling = 128;
 QByteArray fileBytes(const QString& path, qint64 limit = controlCeiling) {
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly)) {
@@ -37,10 +39,17 @@ QStringList verifyRuntime(const QString& root) {
   }
   const auto manifest = parseControl(fileBytes(root + "/manifest.json"));
   integer(manifest, "version", 1, 1);
+  if (manifest.contains("sessionProtocol")) {
+    integer(manifest, "sessionProtocol", 0, 1);
+  }
   if (!manifest["files"].isArray()) {
     throw ProtocolError("runtime inventory missing");
   }
   QSet<QString> expected{"manifest.json"};
+  qint64 totalBytes = manifestInfo.st_size;
+  if (manifest["files"].toArray().size() >= runtimeFileCeiling) {
+    throw ProtocolError("runtime file count limit");
+  }
   QSet<QString> dirs;
   QStringList binds;
   for (auto value : manifest["files"].toArray()) {
@@ -67,6 +76,10 @@ QStringList verifyRuntime(const QString& root) {
         info.st_size != integer(record, "size", 0, 1024LL * 1024 * 1024)) {
       throw ProtocolError("runtime file attributes changed");
     }
+    if (info.st_size > runtimeByteCeiling - totalBytes) {
+      throw ProtocolError("runtime aggregate byte limit");
+    }
+    totalBytes += info.st_size;
     QFile file(absolute);
     QCryptographicHash hash(QCryptographicHash::Sha256);
     if (!file.open(QIODevice::ReadOnly) || !hash.addData(&file) ||
@@ -93,5 +106,32 @@ QStringList verifyRuntime(const QString& root) {
     }
   }
   return binds;
+}
+
+void verifyProtectedRuntime(const QString& root) {
+  if (!QDir::isAbsolutePath(root) || QDir::cleanPath(root) != root) {
+    throw ProtocolError("protected runtime requires a clean absolute path");
+  }
+  auto check = [](const QString& path, bool directory) {
+    struct stat info{};
+    if (lstat(QFile::encodeName(path).constData(), &info) != 0 || info.st_uid != 0 || (info.st_mode & 0022) != 0 ||
+        (directory ? !S_ISDIR(info.st_mode) : !S_ISREG(info.st_mode))) {
+      throw ProtocolError("runtime is not protected by root ownership and modes");
+    }
+  };
+  auto ancestor = root;
+  while (true) {
+    check(ancestor, true);
+    if (ancestor == "/") {
+      break;
+    }
+    ancestor = QFileInfo(ancestor).path();
+  }
+  QDirIterator entries(root, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
+                       QDirIterator::Subdirectories);
+  while (entries.hasNext()) {
+    const auto path = entries.next();
+    check(path, entries.fileInfo().isDir());
+  }
 }
 }  // namespace HolonightImages::Isolation

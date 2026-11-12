@@ -4,9 +4,11 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QThread>
 #include <QtEndian>
 
 #include <csignal>
+#include <cstdio>
 #include <poll.h>
 #include <span>
 #include <sys/prctl.h>
@@ -54,6 +56,77 @@ int completePayload(const QByteArray& payload, Operation operation, QFile& input
   }
   return 0;
 }
+int sessionFault(QFile& input, QFile& out) {
+  out.write(frame(QJsonObject{{"sessionVersion", 1}, {"command", "ready"}}));
+  out.flush();
+  const auto count = qFromBigEndian<quint32>(read(input, 4).constData());
+  if (!count || count > controlCeiling) {
+    return 92;
+  }
+  const auto record = parseControl(read(input, count));
+  qint64 bytes = 0;
+  const auto request = parseRequest(record, bytes);
+  const auto mode = read(input, bytes);
+  if (mode == "session-crash") {
+    return 93;
+  }
+  if (mode == "session-hang") {
+    for (;;) {
+      pause();
+    }
+  }
+  if (mode == "session-malformed") {
+    out.write(QByteArray::fromHex("ffffffff"));
+    out.flush();
+    return 93;
+  }
+  if (mode == "session-descendant" && fork() == 0) {
+    signal(SIGTERM, SIG_IGN);
+    prctl(PR_SET_NAME, "hn-session-kid");
+    for (;;) {
+      pause();
+    }
+  }
+  Reply reply;
+  reply.inspection.outcome = Outcome::Unsupported;
+  QByteArray pixels;
+  auto response = replyControl(reply, request.operation, pixels);
+  response["transactionVersion"] = 1;
+  response["sessionVersion"] = 1;
+  response["transactionId"] = mode == "session-identity" ? 2 : 1;
+  response["sequence"] = mode == "session-sequence" ? 1 : 0;
+  out.write(frame(response));
+  out.flush();
+  const auto completion_size = qFromBigEndian<quint32>(read(input, 4).constData());
+  if (!completion_size || completion_size > controlCeiling) {
+    return 92;
+  }
+  const auto completion = parseControl(read(input, completion_size));
+  integer(completion, "transactionId", 1, 1);
+  integer(completion, "sequence", 1, 1);
+  if (completion["command"] != "complete") {
+    return 92;
+  }
+  out.write(frame(QJsonObject{{"sessionVersion", 1},
+                              {"transactionId", mode == "session-ack-identity" ? 2 : 1},
+                              {"sequence", 1},
+                              {"command", "completed"}}));
+  out.flush();
+  if (mode == "session-idle-output") {
+    QThread::msleep(20);
+    const QByteArray flood(65536, 'x');
+    while (out.write(flood) == flood.size() && out.flush()) {
+    }
+    return 93;
+  }
+  if (mode == "session-idle-exit") {
+    QThread::msleep(20);
+    return 0;
+  }
+  for (;;) {
+    pause();
+  }
+}
 }  // namespace
 int main(int argc, char** argv) {
   const std::span<char*> arguments(argv, static_cast<size_t>(argc) + 1);
@@ -67,13 +140,27 @@ int main(int argc, char** argv) {
     return 71;
   }
   QCoreApplication app(argc, argv);
+  if (argc == 2 && QByteArray(arguments[1]) == "--session-protocol-version") {
+    std::fputs("1\n", stdout);
+    return 0;
+  }
   QFile input;
   QFile out;
   if (!input.open(stdin, QIODevice::ReadOnly) || !out.open(stdout, QIODevice::WriteOnly)) {
     return 91;
   }
+#ifdef HN_TEST_STARTUP_TIMEOUT
+  if (argc == 2 && QByteArray(arguments[1]) == "--session") {
+    for (;;) {
+      pause();
+    }
+  }
+#endif
   if (out.write("R", 1) != 1 || !out.flush()) {
     return 76;
+  }
+  if (argc == 2 && QByteArray(arguments[1]) == "--session") {
+    return sessionFault(input, out);
   }
   const auto size = qFromBigEndian<quint32>(read(input, 4).constData());
   if (size > controlCeiling) {

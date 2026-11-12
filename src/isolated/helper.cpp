@@ -8,6 +8,7 @@
 #include <QImageReader>
 #include <QtEndian>
 
+#include <cstdio>
 #include <poll.h>
 #include <span>
 #include <unistd.h>
@@ -69,7 +70,9 @@ Reply execute(const Request& request, QByteArray& bytes, bool cachedPng) {
   }
   return reply;
 }
-int serve(QFile& input, QFile& output) {
+// Scope all transaction resources together; acknowledgement follows its destruction.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+int serve(QFile& input, QFile& output, bool session = false, int transaction_id = 0) {
   QByteArray retainedBytes;
   bool transaction = false;
   bool sourceDecoded = false;
@@ -83,6 +86,22 @@ int serve(QFile& input, QFile& output) {
     }
     qint64 count = 0;
     const auto record = parseControl(read(input, size));
+    if (session) {
+      integer(record, "sessionVersion", 1, 1);
+      integer(record, "transactionId", transaction_id, transaction_id);
+      integer(record, "sequence", sequence, sequence);
+      if (record.contains("command")) {
+        if (sequence == 0 || record.size() != 4 || record["command"] != "complete") {
+          throw ProtocolError("invalid session completion command");
+        }
+        // Returning destroys source bytes, reply pixels, devices and readers.
+        // The outer loop acknowledges only after this scope has been destroyed.
+        return -sequence - 1;
+      }
+      if (!record.contains("transactionVersion")) {
+        throw ProtocolError("session requires source transaction");
+      }
+    }
     const auto request = parseRequest(record, count);
     if (sequence == 0) {
       transaction = record.contains("transactionVersion");
@@ -103,12 +122,16 @@ int serve(QFile& input, QFile& output) {
       control["transactionVersion"] = 1;
       control["sequence"] = sequence;
     }
+    if (session) {
+      control["sessionVersion"] = 1;
+      control["transactionId"] = transaction_id;
+    }
     const auto header = frame(control);
     if (output.write(header) != header.size() || output.write(pixels) != pixels.size() || !output.flush()) {
       return 73;
     }
     prefix = read(input, 1);
-    if (prefix == "A") {
+    if (!session && prefix == "A") {
       return 0;
     }
     if (!transaction) {
@@ -118,6 +141,8 @@ int serve(QFile& input, QFile& output) {
   }
 }
 }  // namespace
+// Keep the trusted gate and validation-only entrypoints adjacent to protocol dispatch.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 int main(int argc, char** argv) {
   const std::span<char*> arguments(argv, static_cast<size_t>(argc) + 1);
   // The trusted launcher gate never interprets image bytes. Parent releases it
@@ -132,9 +157,18 @@ int main(int argc, char** argv) {
     return 71;
   }
   QCoreApplication app(argc, argv);
-  if (argc == 3 && QByteArray(arguments[1]) == "--verify-runtime") {
+  if (argc == 2 && QByteArray(arguments[1]) == "--session-protocol-version") {
+    std::fputs("1\n", stdout);
+    return 0;
+  }
+  if (argc == 3 &&
+      (QByteArray(arguments[1]) == "--verify-runtime" || QByteArray(arguments[1]) == "--verify-protected-runtime")) {
     try {
-      verifyRuntime(QString::fromLocal8Bit(arguments[2]));
+      const auto root = QString::fromLocal8Bit(arguments[2]);
+      if (QByteArray(arguments[1]) == "--verify-protected-runtime") {
+        verifyProtectedRuntime(root);
+      }
+      verifyRuntime(root);
       return 0;
     } catch (...) {
       return 77;
@@ -151,7 +185,28 @@ int main(int argc, char** argv) {
     if (output.write("R", 1) != 1 || !output.flush()) {
       return 76;
     }
-    return serve(input, output);
+    const bool session = argc == 2 && QByteArray(arguments[1]) == "--session";
+    if (!session) {
+      return serve(input, output);
+    }
+    const auto readiness = frame(QJsonObject{{"sessionVersion", 1}, {"command", "ready"}});
+    if (output.write(readiness) != readiness.size() || !output.flush()) {
+      return 76;
+    }
+    for (int transaction_id = 1; transaction_id < INT_MAX; ++transaction_id) {
+      const auto completed = serve(input, output, true, transaction_id);
+      if (completed >= 0) {
+        return completed;
+      }
+      const auto acknowledgement = frame(QJsonObject{{"sessionVersion", 1},
+                                                     {"transactionId", transaction_id},
+                                                     {"sequence", -completed - 1},
+                                                     {"command", "completed"}});
+      if (output.write(acknowledgement) != acknowledgement.size() || !output.flush()) {
+        return 73;
+      }
+    }
+    return 78;
 
   } catch (const std::exception&) {
     return 74;

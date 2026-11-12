@@ -130,9 +130,13 @@ allocation ceiling and renderer resource checks, not the caller's final output-i
 ## Opt-in isolated raster client (Linux)
 
 `HolonightImages::Isolated` provides synchronous inspection, structured metadata and
-first-frame raster decoding using a fresh sandboxed Qt helper per call. See the
-[design and limits](docs/sdd/isolated-raster/DESIGN.md). Existing APIs and consumers
-are unchanged. SVG and animation sessions are excluded.
+first-frame raster decoding. `IsolatedClient` uses a fresh sandboxed helper and
+returns success after verified exit and cleanup. Protected installations also
+support explicitly owned reusable workers; see the
+[protected-generation and session contract](docs/sdd/bounded-sandbox-reuse/DESIGN.md).
+The [original raster design and limits](docs/sdd/isolated-raster/DESIGN.md) remain
+historical. Existing in-process APIs remain available. SVG and animation sessions
+are excluded.
 
 Build and explicitly prepare a host-native runtime before staging (choose a **new**
 bundle output directory each time the helper changes):
@@ -157,9 +161,17 @@ Runtime operations require Linux unprivileged namespaces, bubblewrap, a user sys
 manager and cgroup v2. The trusted gate loads host dependencies before entering the
 verified sandbox; bundled codecs process image bytes only inside that sandbox.
 
-Capture and complete runtime verification precede the 15-second request deadline
-(after launcher startup); cleanup has a separate five-second budget. Cancellation
-checks cannot interrupt blocking device reads or runtime hashing. Caller output
+Mutable-directory calls perform complete runtime verification on every call.
+Managed installations use root-owned generations and shared directory leases;
+`RuntimeOwner` validates once per selection epoch and exposes explicit `refresh()`.
+A failed refresh revokes acquisitions without stale fallback. `ReusableSession`
+requires a session-capable lease; successful `SessionResult` proves transaction
+completion acknowledgement while its helper remains alive. Explicit retirement
+verifies terminal cleanup. Worker compromise can persist until recycling.
+
+Startup and active transactions have separate 15-second deadlines; cleanup has a
+separate five-second budget. Cancellation checks cannot interrupt blocking device
+reads or runtime hashing. Caller output
 budgets, the 256 MiB input/transport ceiling, Qt's 256 MiB allocation limit, and the
 2 GiB scope memory limit with zero swap serve separate purposes. Sending the borrowed
 capture removes one full payload copy; it does not bound total parent RSS. Scope
@@ -167,7 +179,7 @@ memory excludes parent capture, verification and output allocations.
 
 Untagged pixels and exact matches to Qt's eight named color spaces, including Adobe
 RGB, are supported. Other valid profiles return `Unsupported`; they are neither
-converted nor silently dropped. See the [current consumer and performance evidence](../docs/initiatives/image-isolation.md#corrected-experiment-0-completed-2026-11-09)
+converted nor silently dropped. See the [historical consumer and performance evidence](../docs/initiatives/image-isolation.md#corrected-experiment-0-completed-2026-11-09)
 for measured behavior and its limits.
 
 For the complete native provider/installed-consumer/fault matrix, run

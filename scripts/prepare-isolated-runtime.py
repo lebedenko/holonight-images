@@ -62,10 +62,19 @@ def prepare(helper, plugins, output):
             target.chmod(mode)
             if hashlib.sha256(target.read_bytes()).hexdigest() != record['sha256']:
                 raise ValueError('runtime copy verification failed')
-        manifest = dict(version=1, files=sorted(records.values(), key=lambda r: r['path']))
+        # Preparation already trusts the explicitly supplied host-native helper.
+        # No image data is supplied. Older helpers exit on EOF and declare no
+        # reusable protocol; retained legacy generations remain one-shot capable.
+        capability = subprocess.run([str(stage / 'usr/libexec/holonight-images-helper'), '--session-protocol-version'], input=b'',
+                                    capture_output=True, timeout=5, check=False)
+        session_protocol = int(capability.returncode == 0 and capability.stdout == b'1\n')
+        manifest = dict(version=1, sessionProtocol=session_protocol,
+                        files=sorted(records.values(), key=lambda r: r['path']))
         data = (json.dumps(manifest, indent=2) + '\n').encode()
         if len(data) > 65536:
             raise ValueError('manifest exceeds runtime bound')
+        if len(records) + 1 > 128 or sum(r['size'] for r in records.values()) + len(data) > 128 * 1024 * 1024:
+            raise ValueError('runtime exceeds 128 files or 128 MiB including manifest')
         (stage / 'manifest.json').write_bytes(data)
         (stage / 'manifest.json').chmod(0o644)
         libc = ctypes.CDLL(None, use_errno=True)
