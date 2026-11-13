@@ -484,3 +484,15 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+TEST(Images, JpegXlPluginFixture) {
+  const auto result = decodeBytes(fixture("package-icon.jxl"));
+  if (!QImageReader::supportedImageFormats().contains("jxl")) {
+    EXPECT_TRUE(result.image.isNull());
+    return;
+  }
+  EXPECT_EQ(result.outcome, Outcome::Success);
+  ASSERT_FALSE(result.image.isNull());
+  EXPECT_LE(result.image.width(), 64);
+  EXPECT_LE(result.image.height(), 64);
+}
